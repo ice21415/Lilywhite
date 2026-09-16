@@ -7,7 +7,7 @@ include $(THEOS)/makefiles/common.mk
 TWEAK_NAME = Lilywhite
 Lilywhite_FILES = Tweak.xm
 Lilywhite_CFLAGS = -fobjc-arc
-Lilywhite_FRAMEWORKS = UIKit CoreTelephony
+Lilywhite_FRAMEWORKS = UIKit
 
 include $(THEOS_MAKE_PATH)/tweak.mk
 

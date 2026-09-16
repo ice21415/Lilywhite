@@ -1,6 +1,6 @@
 Package: com.user.lilywhite
 Name: Lilywhite
-Version: 0.1.1
+Version: 0.1.2
 Architecture: iphoneos-arm64e
 Description: A clean integrated status bar capsule for iOS 17.
 Maintainer: USER

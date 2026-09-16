@@ -1,5 +1,4 @@
 #import <UIKit/UIKit.h>
-#import <CoreTelephony/CTTelephonyNetworkInfo.h>
 
 static NSString * const LWOverlayTag = @"com.user.lilywhite.overlay";
 
@@ -64,11 +63,10 @@ static NSString * const LWOverlayTag = @"com.user.lilywhite.overlay";
     formatter.dateFormat = @"HH:mm";
     self.timeLabel.text = [formatter stringFromDate:NSDate.date];
 
-    CTTelephonyNetworkInfo *info = [CTTelephonyNetworkInfo new];
-    NSString *radio = info.serviceCurrentRadioAccessTechnology.allValues.firstObject;
-    if ([radio containsString:@"NR"]) self.networkLabel.text = @"5G";
-    else if ([radio containsString:@"LTE"]) self.networkLabel.text = @"LTE";
-    else self.networkLabel.text = radio.length ? @"4G" : @"—";
+    // Do not instantiate CoreTelephony from SpringBoard. It is not needed for
+    // the visual smoke test and keeps this build independent of its service
+    // lifecycle during SpringBoard launch.
+    self.networkLabel.text = @"—";
     self.wifiLabel.text = @"⌁";
 
     UIDevice *device = UIDevice.currentDevice;
@@ -80,52 +78,46 @@ static NSString * const LWOverlayTag = @"com.user.lilywhite.overlay";
 
 @end
 
-static UIWindow *LWOverlayWindow;
+// SpringBoard owns several scene windows. Creating another UIWindow while its
+// scene is still being assembled can make SpringBoard terminate during launch.
+// Keep this first test build inside an existing SpringBoard window instead.
+static LWStatusCapsule *LWCapsule;
 
 static void LWInstall(void) {
-    if (LWOverlayWindow) return;
+    if (LWCapsule.superview) return;
 
     UIApplication *application = UIApplication.sharedApplication;
-    UIWindowScene *windowScene = nil;
+    UIWindow *hostWindow = nil;
     for (UIScene *scene in application.connectedScenes) {
-        if ([scene isKindOfClass:UIWindowScene.class] &&
-            scene.activationState == UISceneActivationStateForegroundActive) {
-            windowScene = (UIWindowScene *)scene;
-            break;
+        if (![scene isKindOfClass:UIWindowScene.class] ||
+            scene.activationState != UISceneActivationStateForegroundActive) continue;
+        for (UIWindow *window in ((UIWindowScene *)scene).windows) {
+            if (window.hidden || !window.rootViewController) continue;
+            hostWindow = window.isKeyWindow ? window : (hostWindow ?: window);
+            if (window.isKeyWindow) break;
         }
+        if (hostWindow.isKeyWindow) break;
     }
 
-    if (!windowScene) return;
+    if (!hostWindow || hostWindow.bounds.size.width <= 0.0) return;
 
-    // Do not alter SpringBoard's private status-bar view hierarchy.  The first
-    // device-test build only draws above it, so a failed layout cannot crash
-    // the process that owns the Home Screen.
-    LWOverlayWindow = [[UIWindow alloc] initWithWindowScene:windowScene];
-    LWOverlayWindow.frame = windowScene.coordinateSpace.bounds;
-    LWOverlayWindow.backgroundColor = UIColor.clearColor;
-    LWOverlayWindow.windowLevel = UIWindowLevelStatusBar + 2.0;
-    LWOverlayWindow.userInteractionEnabled = NO;
-    UIViewController *controller = [UIViewController new];
-    controller.view.backgroundColor = UIColor.clearColor;
-    LWOverlayWindow.rootViewController = controller;
-
-    CGFloat top = LWOverlayWindow.safeAreaInsets.top > 0 ? LWOverlayWindow.safeAreaInsets.top : 20.0;
-    LWStatusCapsule *capsule = [[LWStatusCapsule alloc] initWithFrame:CGRectMake(8, top - 4, 177, 36)];
-    capsule.accessibilityIdentifier = LWOverlayTag;
-    [controller.view addSubview:capsule];
-    LWOverlayWindow.hidden = NO;
+    CGFloat top = MAX(hostWindow.safeAreaInsets.top, 20.0);
+    LWCapsule = [[LWStatusCapsule alloc] initWithFrame:CGRectMake(8, top - 4, 177, 36)];
+    LWCapsule.accessibilityIdentifier = LWOverlayTag;
+    LWCapsule.userInteractionEnabled = NO;
+    [hostWindow addSubview:LWCapsule];
+    [hostWindow bringSubviewToFront:LWCapsule];
 }
 
 %ctor {
     dispatch_async(dispatch_get_main_queue(), ^{
-        [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidFinishLaunchingNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        void (^installAfterLaunch)(NSNotification *) = ^(__unused NSNotification *note) {
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
                 LWInstall();
             });
-        }];
+        };
+        [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidFinishLaunchingNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:installAfterLaunch];
+        [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidBecomeActiveNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:installAfterLaunch];
         LWInstall();
-        [NSTimer scheduledTimerWithTimeInterval:2.0 repeats:YES block:^(__unused NSTimer *timer) {
-            LWInstall();
-        }];
     });
 }
