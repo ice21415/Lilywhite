@@ -22,10 +22,12 @@ jobs:
 
       - name: Install signing tool and RootHide Theos
         run: |
-          brew install ldid
-          git clone --recursive https://github.com/roothide/theos.git "$HOME/roothide-theos"
-          export THEOS="$HOME/roothide-theos"
-          "$THEOS/bin/install-sdk" latest
+          {
+            brew install ldid
+            git clone --recursive https://github.com/roothide/theos.git "$HOME/roothide-theos"
+            export THEOS="$HOME/roothide-theos"
+            "$THEOS/bin/install-sdk" latest
+          } 2>&1 | tee setup.log
 
       - name: Build arm64e package with Apple toolchain
         run: |
@@ -37,9 +39,9 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add build.log
-          git commit -m "Publish macOS build diagnostic"
-          git push
+          git add -f *.log || true
+          git diff --cached --quiet || git commit -m "Publish macOS build diagnostic"
+          git push || true
 
       - name: Publish package binary
         run: |
