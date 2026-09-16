@@ -31,6 +31,7 @@ jobs:
 
       - name: Build arm64e package with Apple toolchain
         run: |
+          set -o pipefail
           export THEOS="$HOME/roothide-theos"
           make clean package THEOS_PACKAGE_SCHEME=roothide FINALPACKAGE=1 2>&1 | tee build.log
 
@@ -42,6 +43,15 @@ jobs:
           git add -f *.log || true
           git diff --cached --quiet || git commit -m "Publish macOS build diagnostic"
           git push origin HEAD:main || true
+
+      - name: Upload build diagnostic artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lilywhite-build-diagnostic
+          path: build.log
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Upload package artifact
         if: success()
