@@ -64,13 +64,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: lilywhite-roothide-package
-          path: packages/*.deb
+          path: build-packages/*.deb
           if-no-files-found: error
           retention-days: 1
 
       - name: Publish package binary
         run: |
-          cp packages/*.deb .
+          cp build-packages/*.deb .
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add ./*.deb
