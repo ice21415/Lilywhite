@@ -1,0 +1,15 @@
+[0;36m==> [1;39mCleaning…[m
+[0;36m==> [1;36mNotice:[m Build may be slow as Theos isn’t using all available CPU cores on this computer. Consider upgrading GNU Make: https://theos.dev/docs/parallel-building
+[1;31m> [1;3;39mMaking all for tweak Lilywhite…[m
+[0;31m==> [1;39mPreprocessing Tweak.xm…[m
+[0;32m==> [1;39mCompiling Tweak.xm (arm64e)…[m
+[0;33m==> [1;39mLinking tweak Lilywhite (arm64e)…[m
+ld: warning: -multiply_defined is obsolete
+[0;34m==> [1;39mGenerating debug symbols for Lilywhite…[m
+[0;34m==> [1;39mStripping Lilywhite (arm64e)…[m
+[0;34m==> [1;39mSigning Lilywhite…[m
+Build with: make package THEOS_PACKAGE_SCHEME=roothide
+[1;31m> [1;3;39mMaking stage for tweak Lilywhite…[m
+Not a directory at /Users/runner/roothide-theos/bin/dm.pl line 115.
+dm.pl: building package `com.user.lilywhite:iphoneos-arm64e' in `./packages/com.user.lilywhite_0.1.3_iphoneos-arm64e.deb'
+make: *** [internal-package] Error 20
