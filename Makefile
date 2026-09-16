@@ -1,0 +1,14 @@
+TARGET := iphone:clang:latest:15.0
+INSTALL_TARGET_PROCESSES = SpringBoard
+
+include $(THEOS)/makefiles/common.mk
+
+TWEAK_NAME = Lilywhite
+Lilywhite_FILES = Tweak.xm
+Lilywhite_CFLAGS = -fobjc-arc
+Lilywhite_FRAMEWORKS = UIKit CoreTelephony
+
+include $(THEOS_MAKE_PATH)/tweak.mk
+
+after-all::
+	@echo "Build with: make package THEOS_PACKAGE_SCHEME=roothide"
