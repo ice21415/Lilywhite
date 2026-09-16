@@ -80,35 +80,40 @@ static NSString * const LWOverlayTag = @"com.user.lilywhite.overlay";
 
 @end
 
-static void LWHideNativeStatusBar(UIView *view) {
-    for (UIView *child in [view.subviews copy]) {
-        if (child.tag == 17012) continue;
-        child.hidden = YES;
-        LWHideNativeStatusBar(child);
-    }
-}
+static UIWindow *LWOverlayWindow;
 
 static void LWInstall(void) {
+    if (LWOverlayWindow) return;
+
     UIApplication *application = UIApplication.sharedApplication;
-    UIWindow *statusWindow = nil;
+    UIWindowScene *windowScene = nil;
     for (UIScene *scene in application.connectedScenes) {
-        if (![scene isKindOfClass:UIWindowScene.class]) continue;
-        for (UIWindow *window in ((UIWindowScene *)scene).windows) {
-            NSString *name = NSStringFromClass(window.class);
-            if ([name.lowercaseString containsString:@"statusbar"]) {
-                statusWindow = window;
-                break;
-            }
+        if ([scene isKindOfClass:UIWindowScene.class] &&
+            scene.activationState == UISceneActivationStateForegroundActive) {
+            windowScene = (UIWindowScene *)scene;
+            break;
         }
-        if (statusWindow) break;
     }
-    if (!statusWindow) return;
-    LWHideNativeStatusBar(statusWindow);
-    if ([statusWindow viewWithTag:17012]) return;
-    CGFloat top = statusWindow.safeAreaInsets.top > 0 ? statusWindow.safeAreaInsets.top : 20.0;
+
+    if (!windowScene) return;
+
+    // Do not alter SpringBoard's private status-bar view hierarchy.  The first
+    // device-test build only draws above it, so a failed layout cannot crash
+    // the process that owns the Home Screen.
+    LWOverlayWindow = [[UIWindow alloc] initWithWindowScene:windowScene];
+    LWOverlayWindow.frame = windowScene.coordinateSpace.bounds;
+    LWOverlayWindow.backgroundColor = UIColor.clearColor;
+    LWOverlayWindow.windowLevel = UIWindowLevelStatusBar + 2.0;
+    LWOverlayWindow.userInteractionEnabled = NO;
+    UIViewController *controller = [UIViewController new];
+    controller.view.backgroundColor = UIColor.clearColor;
+    LWOverlayWindow.rootViewController = controller;
+
+    CGFloat top = LWOverlayWindow.safeAreaInsets.top > 0 ? LWOverlayWindow.safeAreaInsets.top : 20.0;
     LWStatusCapsule *capsule = [[LWStatusCapsule alloc] initWithFrame:CGRectMake(8, top - 4, 177, 36)];
     capsule.accessibilityIdentifier = LWOverlayTag;
-    [statusWindow addSubview:capsule];
+    [controller.view addSubview:capsule];
+    LWOverlayWindow.hidden = NO;
 }
 
 %ctor {
