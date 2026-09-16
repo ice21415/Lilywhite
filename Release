@@ -1,0 +1,14 @@
+Origin: Lilywhite
+Label: Lilywhite
+Suite: stable
+Codename: stable
+Version: 1.0
+Architectures: iphoneos-arm64 iphoneos-arm64e
+Components: main
+Description: Lilywhite RootHide tweak repository
+MD5Sum:
+ 6d8c8f994453d28b3aafed94c43bc268 490 Packages
+ cef1d042b4ec5712e6cba795ced7c2b1 394 Packages.bz2
+SHA256:
+ 1dd9df4025dbbc98bc68596c8a0d295f3a081a81f4c583c381b59fe841b0857a 490 Packages
+ f809ace007a0e1d3eac87ecc82856e9a28589a266e6ffe108b8b68192429108b 394 Packages.bz2
