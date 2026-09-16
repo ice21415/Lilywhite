@@ -1,0 +1,42 @@
+name: Build RootHide package
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - Tweak.xm
+      - Makefile
+      - control
+      - Lilywhite.plist
+      - .github/workflows/build-roothide.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install signing tool and RootHide Theos
+        run: |
+          brew install ldid
+          git clone --recursive https://github.com/roothide/theos.git "$HOME/roothide-theos"
+          export THEOS="$HOME/roothide-theos"
+          "$THEOS/bin/install-sdk" latest
+
+      - name: Build arm64e package with Apple toolchain
+        run: |
+          export THEOS="$HOME/roothide-theos"
+          make clean package THEOS_PACKAGE_SCHEME=roothide FINALPACKAGE=1
+
+      - name: Publish package binary
+        run: |
+          cp packages/*.deb .
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ./*.deb
+          git diff --cached --quiet || git commit -m "Build Lilywhite 0.1.3 RootHide package"
+          git push
