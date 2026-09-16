@@ -41,7 +41,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -f *.log || true
           git diff --cached --quiet || git commit -m "Publish macOS build diagnostic"
-          git push || true
+          git push origin HEAD:main || true
 
       - name: Publish package binary
         run: |
@@ -50,4 +50,4 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add ./*.deb
           git diff --cached --quiet || git commit -m "Build Lilywhite 0.1.3 RootHide package"
-          git push
+          git push origin HEAD:main
