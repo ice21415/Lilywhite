@@ -13,7 +13,7 @@ A clean integrated status bar capsule tweak for iOS 17.1.2 RootHide.
 
 Add this repository:
 
-https://raw.githubusercontent.com/ice21415/Lilywhite/main/
+https://ice21415.github.io/Lilywhite/
 
 This is an early device-test build. Exact Wi-Fi and cellular signal bars still need to be mapped against the iOS 17.1.2 SpringBoard status-bar classes.
 
