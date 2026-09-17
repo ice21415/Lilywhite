@@ -290,7 +290,15 @@ static void LWLoadExistingNotificationRequests(id masterList) {
     id requests = [masterList performSelector:selector];
 #pragma clang diagnostic pop
     if (![requests conformsToProtocol:@protocol(NSFastEnumeration)]) return;
-    for (id request in requests) LWTrackNotificationRequest(request, NO);
+    NSMutableArray<NSString *> *debug = [NSMutableArray arrayWithObject:[NSString stringWithFormat:@"requests=%lu", (unsigned long)[requests count]]];
+    for (id request in requests) {
+        id bulletin = LWKVC(request, @"bulletin");
+        id icon = LWKVC(bulletin, @"sectionIcon") ?: LWKVC(bulletin, @"icon");
+        [debug addObject:[NSString stringWithFormat:@"request=%@ section=%@ bulletin=%@ icon=%@", NSStringFromClass([request class]), LWKVC(request, @"sectionIdentifier"), NSStringFromClass([bulletin class]), NSStringFromClass([icon class])]];
+        LWTrackNotificationRequest(request, NO);
+    }
+    LWRuntimeMap = [debug componentsJoinedByString:@"\n"];
+    LWStartRuntimeSocket();
 }
 
 static void LWRefreshNativeSignalBars(UIView *root) {
@@ -586,6 +594,11 @@ static __attribute__((unused)) void LWInstallIntoStatusBar(UIStatusBar *statusBa
 }
 
 - (void)setLoadedNotificationSections:(id)sections {
+    %orig;
+    LWLoadExistingNotificationRequests(self);
+}
+
+- (void)_notificationListDidChangeContent {
     %orig;
     LWLoadExistingNotificationRequests(self);
 }
