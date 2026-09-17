@@ -161,6 +161,8 @@ static NSMutableArray<NSString *> *LWNotificationOrder;
 static NSMutableDictionary<NSString *, UIImage *> *LWNotificationIconCache;
 static char LWNativeRightHiddenKey;
 
+static void LWStartRuntimeSocket(void);
+
 static __attribute__((unused)) BOOL LWIsSpringBoardProcess(void) {
     return [NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.apple.springboard"];
 }
@@ -192,6 +194,43 @@ static void LWWriteNotificationRuntimeMap(void) {
     }
     LWRuntimeMap = output;
     [output writeToFile:@"/var/mobile/Library/Preferences/LilywhiteNotificationRuntime.txt" atomically:YES encoding:NSUTF8StringEncoding error:nil];
+}
+
+static void LWDescribeStatusBarTouchView(UIView *view, NSUInteger depth, NSMutableString *output) {
+    if (!view || depth > 4) return;
+    NSString *indent = [@"" stringByPaddingToLength:depth * 2 withString:@" " startingAtIndex:0];
+    NSMutableArray<NSString *> *gestures = [NSMutableArray array];
+    for (UIGestureRecognizer *gesture in view.gestureRecognizers ?: @[]) {
+        [gestures addObject:NSStringFromClass(gesture.class)];
+    }
+    [output appendFormat:@"%@%@ frame=%@ enabled=%d hidden=%d gestures=%@\n", indent,
+     NSStringFromClass(view.class), NSStringFromCGRect(view.frame), view.userInteractionEnabled,
+     view.hidden, [gestures componentsJoinedByString:@","]];
+    for (UIView *child in view.subviews) LWDescribeStatusBarTouchView(child, depth + 1, output);
+}
+
+static void LWWriteStatusBarTouchMap(void) {
+    UIWindow *window = LWStatusWindow;
+    if (!window) return;
+    NSMutableString *output = [NSMutableString stringWithFormat:@"window=%@ frame=%@ enabled=%d\n",
+                               NSStringFromClass(window.class), NSStringFromCGRect(window.frame), window.userInteractionEnabled];
+    [LWDescribeStatusBarTouchView(window, 0, output)];
+    [output appendString:@"\n--- TOUCH SELECTORS ---\n"];
+    for (Class cls = window.class; cls && cls != NSObject.class; cls = class_getSuperclass(cls)) {
+        [output appendFormat:@"[%@]\n", NSStringFromClass(cls)];
+        unsigned int count = 0;
+        Method *methods = class_copyMethodList(cls, &count);
+        for (unsigned int i = 0; i < count; i++) {
+            NSString *name = NSStringFromSelector(method_getName(methods[i]));
+            NSString *lower = name.lowercaseString;
+            if ([lower containsString:@"touch"] || [lower containsString:@"event"] || [lower containsString:@"hit"] || [lower containsString:@"gesture"]) {
+                [output appendFormat:@"- %@\n", name];
+            }
+        }
+        free(methods);
+    }
+    LWRuntimeMap = output;
+    LWStartRuntimeSocket();
 }
 
 static __attribute__((unused)) void LWStartRuntimeSocket(void) {
@@ -655,6 +694,9 @@ static __attribute__((unused)) void LWInstallIntoStatusBar(UIStatusBar *statusBa
     // overlay here: that was the source of the previous lifecycle mismatch.
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         LWWriteNotificationRuntimeMap();
+    });
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(6.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        LWWriteStatusBarTouchMap();
     });
 }
 
