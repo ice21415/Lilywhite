@@ -92,6 +92,17 @@ static LWStatusCapsule *LWCapsule;
 static __weak UIStatusBar *LWStatusBar;
 static CGFloat LWNativeTimeHeight;
 
+static void LWWriteRuntimeMap(void) {
+    UIApplication *app = UIApplication.sharedApplication;
+    NSMutableString *out = [NSMutableString stringWithFormat:@"app=%@ statusBar=%@\\n",
+        NSStringFromClass(app.class), NSStringFromClass(app.statusBar.class)];
+    [out appendFormat:@"statusBarFrame=%@ subviews=%lu\\n", NSStringFromCGRect(app.statusBar.frame), (unsigned long)app.statusBar.subviews.count];
+    for (UIWindow *window in app.windows) {
+        [out appendFormat:@"window=%@ frame=%@ root=%@\\n", NSStringFromClass(window.class), NSStringFromCGRect(window.frame), NSStringFromClass(window.rootViewController.class)];
+    }
+    [out writeToFile:@"/var/root/LilywhiteStatusRuntime.txt" atomically:YES encoding:NSUTF8StringEncoding error:nil];
+}
+
 static void LWHideNativeTimeItem(UIView *view, NSUInteger depth) {
     if (!view || depth > 8) return;
     NSString *className = NSStringFromClass(view.class);
@@ -149,6 +160,9 @@ static void LWInstallIntoStatusBar(UIStatusBar *statusBar) {
             });
         }];
         LWInstallIntoStatusBar(UIApplication.sharedApplication.statusBar);
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            LWWriteRuntimeMap();
+        });
     });
 }
 
