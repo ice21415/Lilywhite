@@ -214,7 +214,7 @@ static void LWWriteStatusBarTouchMap(void) {
     if (!window) return;
     NSMutableString *output = [NSMutableString stringWithFormat:@"window=%@ frame=%@ enabled=%d\n",
                                NSStringFromClass(window.class), NSStringFromCGRect(window.frame), window.userInteractionEnabled];
-    [LWDescribeStatusBarTouchView(window, 0, output)];
+    LWDescribeStatusBarTouchView(window, 0, output);
     [output appendString:@"\n--- TOUCH SELECTORS ---\n"];
     for (Class cls = window.class; cls && cls != NSObject.class; cls = class_getSuperclass(cls)) {
         [output appendFormat:@"[%@]\n", NSStringFromClass(cls)];
