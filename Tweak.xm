@@ -1,6 +1,9 @@
 #import <UIKit/UIKit.h>
 #import <UIKit/UIApplication+Private.h>
 #import <UIKit/UIStatusBar.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <unistd.h>
 
 static NSString * const LWOverlayTag = @"com.user.lilywhite.overlay";
 
@@ -90,6 +93,33 @@ static __weak UIStatusBar *LWStatusBar;
 static __weak UIWindow *LWStatusWindow;
 static CGFloat LWNativeTimeHeight;
 static CGRect LWNativeTimeRect;
+static NSString *LWRuntimeMap;
+
+static void LWStartRuntimeSocket(void) {
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+        int server = socket(AF_INET, SOCK_STREAM, 0);
+        if (server < 0) return;
+        struct sockaddr_in addr = {0};
+        addr.sin_len = sizeof(addr);
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        addr.sin_port = htons(27043);
+        int yes = 1;
+        setsockopt(server, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
+        if (bind(server, (struct sockaddr *)&addr, sizeof(addr)) != 0 || listen(server, 1) != 0) {
+            close(server);
+            return;
+        }
+        int client = accept(server, NULL, NULL);
+        if (client >= 0) {
+            while (!LWRuntimeMap) usleep(100000);
+            NSData *data = [LWRuntimeMap dataUsingEncoding:NSUTF8StringEncoding];
+            send(client, data.bytes, data.length, 0);
+            close(client);
+        }
+        close(server);
+    });
+}
 
 static BOOL LWLooksLikeClockText(NSString *text) {
     if (![text isKindOfClass:NSString.class] || text.length < 4 || text.length > 5) return NO;
@@ -139,6 +169,7 @@ static void LWWriteRuntimeMap(void) {
     [out writeToFile:@"/var/tmp/LilywhiteStatusRuntime.txt" atomically:YES encoding:NSUTF8StringEncoding error:nil];
     [[NSUserDefaults standardUserDefaults] setObject:out forKey:@"LilywhiteStatusRuntime"];
     [[NSUserDefaults standardUserDefaults] synchronize];
+    LWRuntimeMap = [out copy];
 }
 
 static void LWHideNativeTimeItem(UIView *view, NSUInteger depth) {
@@ -242,6 +273,7 @@ static void LWInstallIntoStatusBar(UIStatusBar *statusBar) {
             });
         }];
         LWInstallIntoStatusBar(UIApplication.sharedApplication.statusBar);
+        LWStartRuntimeSocket();
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             LWWriteRuntimeMap();
         });
