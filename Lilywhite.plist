@@ -1,8 +1,5 @@
 {
-    // Load only where the native status-string implementation actually exists.
-    Filter = {
-        Bundles = ("com.apple.springboard");
-        Classes = ("STUIStatusBarStringView");
-        Mode = "Any";
-    };
+    // Use the verified SpringBoard target while inspecting its notification
+    // runtime. App-process injection is deliberately not enabled here.
+    Filter = { Bundles = ("com.apple.springboard"); };
 }
