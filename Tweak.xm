@@ -282,6 +282,34 @@ static void LWTrackNotificationRequest(id request, BOOL removed) {
     dispatch_async(dispatch_get_main_queue(), ^{ LWRenderNotificationTray(); });
 }
 
+static void LWDescribeNotificationContainer(id object, NSMutableArray<NSString *> *debug) {
+    if (!object) return;
+    NSMutableSet<NSString *> *reported = [NSMutableSet set];
+    for (Class cls = [object class]; cls && cls != NSObject.class; cls = class_getSuperclass(cls)) {
+        unsigned int methodCount = 0;
+        Method *methods = class_copyMethodList(cls, &methodCount);
+        for (unsigned int i = 0; i < methodCount; i++) {
+            NSString *selector = NSStringFromSelector(method_getName(methods[i]));
+            NSString *lower = selector.lowercaseString;
+            if (([lower containsString:@"request"] || [lower containsString:@"notification"] || [lower containsString:@"section"] || [lower containsString:@"list"]) && ![reported containsObject:selector]) {
+                [reported addObject:selector];
+                [debug addObject:[NSString stringWithFormat:@"  selector %@", selector]];
+            }
+        }
+        free(methods);
+        unsigned int ivarCount = 0;
+        Ivar *ivars = class_copyIvarList(cls, &ivarCount);
+        for (unsigned int i = 0; i < ivarCount; i++) {
+            NSString *name = @(ivar_getName(ivars[i]));
+            NSString *lower = name.lowercaseString;
+            if ([lower containsString:@"request"] || [lower containsString:@"notification"] || [lower containsString:@"section"] || [lower containsString:@"list"]) {
+                [debug addObject:[NSString stringWithFormat:@"  ivar %@", name]];
+            }
+        }
+        free(ivars);
+    }
+}
+
 static void LWLoadExistingNotificationRequests(id masterList) {
     if (!masterList) return;
     // iOS 17 keeps the rendered requests in sections on some builds, while
@@ -319,6 +347,7 @@ static void LWLoadExistingNotificationRequests(id masterList) {
                 continue;
             }
             [debug addObject:[NSString stringWithFormat:@"section=%@", NSStringFromClass([object class])]];
+            LWDescribeNotificationContainer(object, debug);
             for (NSString *key in @[@"notificationRequests", @"requests", @"visibleNotificationRequests", @"_visibleNotificationRequests"]) {
                 id sectionRequests = LWKVC(object, key);
                 if (![sectionRequests conformsToProtocol:@protocol(NSFastEnumeration)]) continue;
