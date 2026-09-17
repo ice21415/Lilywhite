@@ -90,6 +90,7 @@ static NSString * const LWOverlayTag = @"com.user.lilywhite.overlay";
 
 static LWStatusCapsule *LWCapsule;
 static __weak UIStatusBar *LWStatusBar;
+static CGFloat LWNativeTimeHeight;
 
 static void LWHideNativeTimeItem(UIView *view, NSUInteger depth) {
     if (!view || depth > 8) return;
@@ -102,6 +103,7 @@ static void LWHideNativeTimeItem(UIView *view, NSUInteger depth) {
     if ([haystack containsString:@"time"] && view != (UIView *)LWStatusBar &&
         view.bounds.size.width > 0.0 && view.bounds.size.width <= 110.0 &&
         view.subviews.count <= 3) {
+        LWNativeTimeHeight = MAX(LWNativeTimeHeight, CGRectGetHeight(view.frame));
         view.hidden = YES;
         return;
     }
@@ -113,9 +115,14 @@ static void LWHideNativeTimeItem(UIView *view, NSUInteger depth) {
 static void LWInstallIntoStatusBar(UIStatusBar *statusBar) {
     if (!statusBar || statusBar.bounds.size.width <= 0.0) return;
     LWStatusBar = statusBar;
+    LWNativeTimeHeight = 0.0;
     LWHideNativeTimeItem(statusBar, 0);
     CGFloat height = statusBar.bounds.size.height;
-    CGFloat capsuleHeight = MIN(36.0, MAX(28.0, height - 6.0));
+    // The status bar's bounds include the whole notch-safe region. The native
+    // time item is the reliable measurement for the visible strip beside it.
+    CGFloat capsuleHeight = LWNativeTimeHeight > 0.0
+        ? MIN(24.0, MAX(18.0, LWNativeTimeHeight))
+        : MIN(24.0, MAX(18.0, height - 30.0));
     if (LWCapsule.superview != statusBar) {
         [LWCapsule removeFromSuperview];
         LWCapsule = [[LWStatusCapsule alloc] initWithFrame:CGRectZero];
