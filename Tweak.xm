@@ -175,6 +175,7 @@ static void LWWriteNotificationRuntimeMap(void) {
     }
     free(classes);
     NSString *output = [[names sortedArrayUsingSelector:@selector(compare:)] componentsJoinedByString:@"\n"];
+    LWRuntimeMap = output;
     [output writeToFile:@"/var/mobile/Library/Preferences/LilywhiteNotificationRuntime.txt" atomically:YES encoding:NSUTF8StringEncoding error:nil];
 }
 
@@ -448,6 +449,7 @@ static __attribute__((unused)) void LWInstallIntoStatusBar(UIStatusBar *statusBa
     if (!LWNotificationMapCaptured) {
         LWNotificationMapCaptured = YES;
         LWWriteNotificationRuntimeMap();
+        LWStartRuntimeSocket();
         NSArray<NSString *> *candidates = @[
             @"BBServer", @"SBBulletinBannerController", @"NCNotificationMasterList",
             @"NCNotificationListViewController", @"NCNotificationRequest",
