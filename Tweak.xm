@@ -174,7 +174,17 @@ static void LWWriteNotificationRuntimeMap(void) {
         }
     }
     free(classes);
-    NSString *output = [[names sortedArrayUsingSelector:@selector(compare:)] componentsJoinedByString:@"\n"];
+    NSMutableString *output = [NSMutableString stringWithString:[[names sortedArrayUsingSelector:@selector(compare:)] componentsJoinedByString:@"\n"]];
+    [output appendString:@"\n\n--- TARGET METHODS ---\n"];
+    for (NSString *className in @[@"BBServer", @"BBBulletin", @"BBBulletinRequest", @"SBBulletinLocalObserverGateway", @"SBNCNotificationDispatcher", @"NCNotificationMasterList", @"NCNotificationRequest"]) {
+        Class cls = NSClassFromString(className);
+        if (!cls) continue;
+        [output appendFormat:@"\n[%@]\n", className];
+        unsigned int methodCount = 0;
+        Method *methods = class_copyMethodList(cls, &methodCount);
+        for (unsigned int i = 0; i < methodCount; i++) [output appendFormat:@"- %@\n", NSStringFromSelector(method_getName(methods[i]))];
+        free(methods);
+    }
     LWRuntimeMap = output;
     [output writeToFile:@"/var/mobile/Library/Preferences/LilywhiteNotificationRuntime.txt" atomically:YES encoding:NSUTF8StringEncoding error:nil];
 }
