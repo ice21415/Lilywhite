@@ -30,6 +30,7 @@ static __attribute__((unused)) NSInteger LWVisibleSignalLayers(CALayer *layer) {
 @property(nonatomic, strong) CAShapeLayer *batteryOutlineLayer;
 @property(nonatomic, strong) NSTimer *timer;
 @property(nonatomic, assign) CGFloat batteryFraction;
+@property(nonatomic, strong) NSDate *batteryPercentageVisibleUntil;
 @end
 
 @implementation LWStatusCapsule
@@ -64,6 +65,8 @@ static __attribute__((unused)) NSInteger LWVisibleSignalLayers(CALayer *layer) {
     [self.pillView addSubview:self.timeLabel];
     [self.signalDock addSubview:self.signalLabel];
     [self addSubview:self.wifiImage];
+    UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(showBatteryPercentage:)];
+    [self addGestureRecognizer:tap];
     [[UIDevice currentDevice] setBatteryMonitoringEnabled:YES];
     self.timer = [NSTimer scheduledTimerWithTimeInterval:1.0 target:self selector:@selector(updateContent) userInfo:nil repeats:YES];
     [self updateContent];
@@ -108,11 +111,12 @@ static __attribute__((unused)) NSInteger LWVisibleSignalLayers(CALayer *layer) {
     return CGSizeMake(108.0, size.height);
 }
 
-- (void)updateContent {
-    NSDateFormatter *formatter = [NSDateFormatter new];
-    formatter.dateFormat = @"HH:mm";
-    self.timeLabel.text = [formatter stringFromDate:NSDate.date];
+- (void)showBatteryPercentage:(__unused UITapGestureRecognizer *)recognizer {
+    self.batteryPercentageVisibleUntil = [NSDate dateWithTimeIntervalSinceNow:3.0];
+    [self updateContent];
+}
 
+- (void)updateContent {
     // Do not instantiate CoreTelephony from SpringBoard. It is not needed for
     // the visual smoke test and keeps this build independent of its service
     // lifecycle during SpringBoard launch.
@@ -121,6 +125,15 @@ static __attribute__((unused)) NSInteger LWVisibleSignalLayers(CALayer *layer) {
 
     UIDevice *device = UIDevice.currentDevice;
     self.batteryFraction = device.batteryLevel >= 0.0 ? MIN(1.0, MAX(0.0, device.batteryLevel)) : 1.0;
+    if ([self.batteryPercentageVisibleUntil timeIntervalSinceNow] > 0.0) {
+        NSInteger percentage = (NSInteger)(self.batteryFraction * 100.0 + 0.5);
+        self.timeLabel.text = [NSString stringWithFormat:@"%ld%%", (long)percentage];
+    } else {
+        self.batteryPercentageVisibleUntil = nil;
+        NSDateFormatter *formatter = [NSDateFormatter new];
+        formatter.dateFormat = @"HH:mm";
+        self.timeLabel.text = [formatter stringFromDate:NSDate.date];
+    }
     [self setNeedsLayout];
     [self setNeedsDisplay];
 }
