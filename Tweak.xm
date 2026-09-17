@@ -309,7 +309,10 @@ static void LWTrackNotificationRequest(id request, BOOL removed) {
 static void LWLoadExistingNotificationRequests(id masterList) {
     SEL selector = NSSelectorFromString(@"_visibleNotificationRequests");
     if (!masterList || ![masterList respondsToSelector:selector]) return;
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
     id requests = [masterList performSelector:selector];
+#pragma clang diagnostic pop
     if (![requests conformsToProtocol:@protocol(NSFastEnumeration)]) return;
     for (id request in requests) LWTrackNotificationRequest(request, NO);
 }
