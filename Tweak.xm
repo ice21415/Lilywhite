@@ -308,7 +308,10 @@ static void LWRenderNotificationTray(void) {
     CGFloat spacing = 4.0;
     CGFloat width = sections.count * iconSize + (sections.count - 1) * spacing;
     CGRect anchorFrame = [anchor convertRect:anchor.bounds toView:host];
-    CGFloat rightInset = MAX(8.0, host.bounds.size.width - CGRectGetMaxX(anchorFrame));
+    // The cellular item begins at the inner (notch-facing) edge of the
+    // native right cluster.  Its right edge is therefore not the status
+    // area's outer edge; align the notification group to that outer edge.
+    CGFloat rightInset = 8.0;
     LWNotificationTray.frame = CGRectMake(host.bounds.size.width - width - rightInset,
                                           CGRectGetMidY(anchorFrame) - iconSize / 2.0,
                                           width, iconSize);
