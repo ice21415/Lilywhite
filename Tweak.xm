@@ -154,6 +154,7 @@ static CGRect LWNativeTimeRect;
 static UIView *LWNativeTimeView;
 static NSString *LWRuntimeMap;
 static char LWNativeCapsuleKey;
+static BOOL LWNotificationMapCaptured;
 
 static __attribute__((unused)) BOOL LWIsSpringBoardProcess(void) {
     return [NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.apple.springboard"];
@@ -444,6 +445,10 @@ static __attribute__((unused)) void LWInstallIntoStatusBar(UIStatusBar *statusBa
 - (void)didMoveToWindow {
     %orig;
     UIView *item = (UIView *)(id)self;
+    if (!LWNotificationMapCaptured) {
+        LWNotificationMapCaptured = YES;
+        LWWriteNotificationRuntimeMap();
+    }
     // The text is commonly still nil at this point. layoutSubviews below
     // performs the exact clock check after the system has configured it.
     if (!item.window) return;
