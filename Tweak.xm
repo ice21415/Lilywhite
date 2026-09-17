@@ -50,14 +50,22 @@ static NSString * const LWOverlayTag = @"com.user.lilywhite.overlay";
 - (void)layoutSubviews {
     [super layoutSubviews];
     CGFloat h = self.bounds.size.height;
-    CGFloat x = 11.0;
-    self.timeLabel.frame = CGRectMake(x, 0, 50, h);
-    x += 55.0;
-    self.networkLabel.frame = CGRectMake(x, 0, 28, h);
-    x += 31.0;
-    self.wifiLabel.frame = CGRectMake(x, 0, 25, h);
-    x += 28.0;
-    self.batteryLabel.frame = CGRectMake(x, 0, 43, h);
+    CGFloat x = 10.0;
+    NSArray<UILabel *> *labels = @[self.timeLabel, self.networkLabel, self.wifiLabel, self.batteryLabel];
+    for (UILabel *label in labels) {
+        CGFloat width = ceil([label sizeThatFits:CGSizeMake(CGFLOAT_MAX, h)].width);
+        width = MAX(width, 12.0);
+        label.frame = CGRectMake(x, 0.0, width, h);
+        x += width + 6.0;
+    }
+}
+
+- (CGSize)sizeThatFits:(CGSize)size {
+    CGFloat width = 20.0;
+    for (UILabel *label in @[self.timeLabel, self.networkLabel, self.wifiLabel, self.batteryLabel]) {
+        width += ceil([label sizeThatFits:CGSizeMake(CGFLOAT_MAX, size.height)].width) + 6.0;
+    }
+    return CGSizeMake(ceil(width), size.height);
 }
 
 - (void)updateContent {
@@ -106,18 +114,18 @@ static void LWInstallIntoStatusBar(UIStatusBar *statusBar) {
     if (!statusBar || statusBar.bounds.size.width <= 0.0) return;
     LWStatusBar = statusBar;
     LWHideNativeTimeItem(statusBar, 0);
-    if (LWCapsule.superview == statusBar) {
-        [statusBar bringSubviewToFront:LWCapsule];
-        return;
-    }
-    [LWCapsule removeFromSuperview];
     CGFloat height = statusBar.bounds.size.height;
     CGFloat capsuleHeight = MIN(36.0, MAX(28.0, height - 6.0));
-    LWCapsule = [[LWStatusCapsule alloc] initWithFrame:CGRectMake(8.0,
-        MAX(0.0, (height - capsuleHeight) / 2.0), 177.0, capsuleHeight)];
-    LWCapsule.accessibilityIdentifier = LWOverlayTag;
-    LWCapsule.userInteractionEnabled = NO;
-    [statusBar addSubview:LWCapsule];
+    if (LWCapsule.superview != statusBar) {
+        [LWCapsule removeFromSuperview];
+        LWCapsule = [[LWStatusCapsule alloc] initWithFrame:CGRectZero];
+        LWCapsule.accessibilityIdentifier = LWOverlayTag;
+        LWCapsule.userInteractionEnabled = NO;
+        [statusBar addSubview:LWCapsule];
+    }
+    CGSize fittingSize = [LWCapsule sizeThatFits:CGSizeMake(statusBar.bounds.size.width, capsuleHeight)];
+    CGFloat width = MIN(fittingSize.width, MAX(120.0, statusBar.bounds.size.width - 16.0));
+    LWCapsule.frame = CGRectMake(8.0, MAX(0.0, (height - capsuleHeight) / 2.0), width, capsuleHeight);
     [statusBar bringSubviewToFront:LWCapsule];
 }
 
