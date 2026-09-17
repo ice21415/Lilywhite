@@ -252,7 +252,7 @@ static void LWInstallIntoStatusBar(UIStatusBar *statusBar) {
     CGFloat originX = hasNativeGeometry ? CGRectGetMinX(LWNativeTimeRect) : 8.0;
     CGFloat originY = hasNativeGeometry ? CGRectGetMinY(barRect) + (CGRectGetHeight(barRect) - capsuleHeight) / 2.0 : 18.0;
     CGFloat width = hasNativeGeometry
-        ? MIN(fittingSize.width, hostWindow.bounds.size.width * 0.245)
+        ? MIN(fittingSize.width, CGRectGetWidth(LWNativeTimeRect) + 18.0)
         : MIN(fittingSize.width, hostWindow.bounds.size.width * 0.27);
     if (!hasNativeGeometry) {
         originY = CGRectGetMinY(barRect) + MAX(0.0, (CGRectGetHeight(barRect) - capsuleHeight) / 2.0);
