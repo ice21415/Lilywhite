@@ -3,13 +3,9 @@
 [1;31m> [1;3;39mMaking all for tweak Lilywhite…[m
 [0;31m==> [1;39mPreprocessing Tweak.xm…[m
 [0;32m==> [1;39mCompiling Tweak.xm (arm64e)…[m
-[1mTweak.xm:120:42: [0m[0;1;31merror: [0m[1mblock pointer variable 'dump' is null when captured by block [-Werror,-Wuninitialized][0m
-    void (^dump)(UIView *, NSUInteger) = ^(UIView *view, NSUInteger depth) {
-[0;1;32m                                         ^
-[0m[1mTweak.xm:120:12: [0m[0;1;30mnote: [0mdid you mean to use __block 'dump'?[0m
-    void (^dump)(UIView *, NSUInteger) = ^(UIView *view, NSUInteger depth) {
-[0;1;32m           ^
-[0m[0;32m           __block 
+[1mTweak.xm:285:13: [0m[0;1;31merror: [0m[1mfunction 'LWHideViewsUnderCapsule' is not needed and will not be emitted [-Werror,-Wunneeded-internal-declaration][0m
+static void LWHideViewsUnderCapsule(UIView *view, UIView *host, CGRect capsuleRect, NSUInteger depth) {
+[0;1;32m            ^
 [0m1 error generated.
 make[3]: *** [/Users/runner/work/Lilywhite/Lilywhite/.theos/obj/arm64e/Tweak.xm.6b7b7878.o] Error 1
 rm /Users/runner/work/Lilywhite/Lilywhite/.theos/obj/arm64e/Tweak.xm.mm
