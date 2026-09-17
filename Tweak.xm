@@ -1,4 +1,6 @@
 #import <UIKit/UIKit.h>
+#import <UIKit/UIApplication+Private.h>
+#import <UIKit/UIStatusBar.h>
 
 static NSString * const LWOverlayTag = @"com.user.lilywhite.overlay";
 
@@ -78,46 +80,68 @@ static NSString * const LWOverlayTag = @"com.user.lilywhite.overlay";
 
 @end
 
-// SpringBoard owns several scene windows. Creating another UIWindow while its
-// scene is still being assembled can make SpringBoard terminate during launch.
-// Keep this first test build inside an existing SpringBoard window instead.
 static LWStatusCapsule *LWCapsule;
+static __weak UIStatusBar *LWStatusBar;
 
-static void LWInstall(void) {
-    if (LWCapsule.superview) return;
-
-    UIApplication *application = UIApplication.sharedApplication;
-    UIWindow *hostWindow = nil;
-    for (UIScene *scene in application.connectedScenes) {
-        if (![scene isKindOfClass:UIWindowScene.class] ||
-            scene.activationState != UISceneActivationStateForegroundActive) continue;
-        for (UIWindow *window in ((UIWindowScene *)scene).windows) {
-            if (window.hidden || !window.rootViewController) continue;
-            hostWindow = window.isKeyWindow ? window : (hostWindow ?: window);
-            if (window.isKeyWindow) break;
-        }
-        if (hostWindow.isKeyWindow) break;
+static void LWHideNativeTimeItem(UIView *view, NSUInteger depth) {
+    if (!view || depth > 8) return;
+    NSString *className = NSStringFromClass(view.class);
+    NSString *identifier = view.accessibilityIdentifier ?: @"";
+    NSString *label = view.accessibilityLabel ?: @"";
+    NSString *haystack = [NSString stringWithFormat:@"%@ %@ %@", className, identifier, label].lowercaseString;
+    // iOS 17 uses private UIStatusBar*Time* item views. Do not hide a broad
+    // container; only hide a reasonably small leaf that identifies as time.
+    if ([haystack containsString:@"time"] && view != (UIView *)LWStatusBar &&
+        view.bounds.size.width > 0.0 && view.bounds.size.width <= 110.0 &&
+        view.subviews.count <= 3) {
+        view.hidden = YES;
+        return;
     }
+    for (UIView *child in [view.subviews copy]) {
+        LWHideNativeTimeItem(child, depth + 1);
+    }
+}
 
-    if (!hostWindow || hostWindow.bounds.size.width <= 0.0) return;
-
-    CGFloat top = MAX(hostWindow.safeAreaInsets.top, 20.0);
-    LWCapsule = [[LWStatusCapsule alloc] initWithFrame:CGRectMake(8, top - 4, 177, 36)];
+static void LWInstallIntoStatusBar(UIStatusBar *statusBar) {
+    if (!statusBar || statusBar.bounds.size.width <= 0.0) return;
+    LWStatusBar = statusBar;
+    LWHideNativeTimeItem(statusBar, 0);
+    if (LWCapsule.superview == statusBar) {
+        [statusBar bringSubviewToFront:LWCapsule];
+        return;
+    }
+    [LWCapsule removeFromSuperview];
+    CGFloat height = statusBar.bounds.size.height;
+    CGFloat capsuleHeight = MIN(36.0, MAX(28.0, height - 6.0));
+    LWCapsule = [[LWStatusCapsule alloc] initWithFrame:CGRectMake(8.0,
+        MAX(0.0, (height - capsuleHeight) / 2.0), 177.0, capsuleHeight)];
     LWCapsule.accessibilityIdentifier = LWOverlayTag;
     LWCapsule.userInteractionEnabled = NO;
-    [hostWindow addSubview:LWCapsule];
-    [hostWindow bringSubviewToFront:LWCapsule];
+    [statusBar addSubview:LWCapsule];
+    [statusBar bringSubviewToFront:LWCapsule];
 }
 
 %ctor {
     dispatch_async(dispatch_get_main_queue(), ^{
-        void (^installAfterLaunch)(NSNotification *) = ^(__unused NSNotification *note) {
+        [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidFinishLaunchingNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(__unused NSNotification *note) {
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                LWInstall();
+                LWInstallIntoStatusBar(UIApplication.sharedApplication.statusBar);
             });
-        };
-        [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidFinishLaunchingNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:installAfterLaunch];
-        [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidBecomeActiveNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:installAfterLaunch];
-        LWInstall();
+        }];
+        [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidBecomeActiveNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(__unused NSNotification *note) {
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                LWInstallIntoStatusBar(UIApplication.sharedApplication.statusBar);
+            });
+        }];
+        LWInstallIntoStatusBar(UIApplication.sharedApplication.statusBar);
     });
 }
+
+%hook UIStatusBar
+- (void)layoutSubviews {
+    %orig;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        LWInstallIntoStatusBar(self);
+    });
+}
+%end
