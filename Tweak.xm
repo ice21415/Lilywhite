@@ -162,7 +162,7 @@ static __attribute__((unused)) BOOL LWIsSpringBoardProcess(void) {
 static void LWWriteNotificationRuntimeMap(void) {
     if (!LWIsSpringBoardProcess()) return;
     int count = objc_getClassList(NULL, 0);
-    Class *classes = calloc((size_t)count, sizeof(Class));
+    Class __unsafe_unretained *classes = (Class __unsafe_unretained *)calloc((size_t)count, sizeof(Class));
     count = objc_getClassList(classes, count);
     NSMutableArray<NSString *> *names = [NSMutableArray array];
     for (int i = 0; i < count; i++) {
