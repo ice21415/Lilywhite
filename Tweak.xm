@@ -139,7 +139,7 @@ static NSInteger LWVisibleSignalLayers(CALayer *layer) {
 @end
 
 static LWStatusCapsule *LWCapsule;
-static __weak UIStatusBar *LWStatusBar;
+static UIStatusBar *LWStatusBar;
 static __weak UIWindow *LWStatusWindow;
 static CGFloat LWNativeTimeHeight;
 static CGRect LWNativeTimeRect;
@@ -310,7 +310,9 @@ static void LWInstallIntoStatusBar(UIStatusBar *statusBar) {
     LWSignalBars = 4;
     LWHideNativeTimeItem(hostWindow, 0);
     UIView *nativeView = LWNativeTimeView;
-    UIView *host = nativeView.superview ?: (UIView *)hostWindow;
+    // Keep the replacement on the status-bar object itself. Its item
+    // foreground subviews are rebuilt during app switches.
+    UIView *host = (UIView *)statusBar;
     host.clipsToBounds = NO;
     CGFloat height = statusBar.bounds.size.height;
     // Reuse the native time item's complete geometry. This is the only
@@ -334,10 +336,11 @@ static void LWInstallIntoStatusBar(UIStatusBar *statusBar) {
     // Keep the replacement entirely in the left segment before the notch.
     // Use the measured native time item's right edge as the real left-region
     // boundary. The extra 32pt is only the space needed for the Wi-Fi glyph.
-    CGFloat originX = nativeView ? CGRectGetMinX(nativeView.frame) : 8.0;
-    CGFloat originY = nativeView ? MAX(0.0, CGRectGetMinY(nativeView.frame) - 3.0) : 18.0;
+    CGRect nativeInHost = nativeView ? [nativeView convertRect:nativeView.bounds toView:host] : CGRectZero;
+    CGFloat originX = nativeView ? CGRectGetMinX(nativeInHost) - 2.0 : 8.0;
+    CGFloat originY = nativeView ? MAX(0.0, CGRectGetMinY(nativeInHost) - 3.0) : 18.0;
     CGFloat width = hasNativeGeometry
-        ? MIN(fittingSize.width, CGRectGetWidth(nativeView.frame) + 4.0)
+        ? MIN(fittingSize.width, CGRectGetWidth(nativeInHost) + 4.0)
         : MIN(fittingSize.width, hostWindow.bounds.size.width * 0.27);
     if (!hasNativeGeometry) {
         originY = 18.0;
