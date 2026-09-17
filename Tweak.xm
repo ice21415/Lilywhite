@@ -50,7 +50,7 @@ static NSInteger LWVisibleSignalLayers(CALayer *layer) {
     self.wifiImage.tintColor = UIColor.whiteColor;
     self.wifiImage.contentMode = UIViewContentModeScaleAspectFit;
     self.signalDock = [[UIView alloc] initWithFrame:CGRectZero];
-    self.signalDock.backgroundColor = [UIColor colorWithWhite:0.10 alpha:0.96];
+    self.signalDock.backgroundColor = UIColor.clearColor;
     self.signalDock.layer.cornerCurve = kCACornerCurveContinuous;
     self.signalDock.userInteractionEnabled = NO;
     [self addSubview:self.signalDock];
@@ -86,7 +86,7 @@ static NSInteger LWVisibleSignalLayers(CALayer *layer) {
     self.pillView.layer.cornerRadius = pillHeight / 2.0;
     CGFloat dockWidth = MIN(28.0, self.bounds.size.width - 8.0);
     self.signalDock.frame = CGRectMake(MAX(4.0, (self.bounds.size.width - dockWidth) / 2.0),
-                                       MAX(0.0, pillHeight - 11.0), dockWidth, 11.0);
+                                       MAX(0.0, pillHeight - 10.0), dockWidth, 10.0);
     self.signalDock.layer.cornerRadius = 5.5;
     CGFloat wifiOffset = self.wifiImage.hidden ? 0.0 : 12.0;
     self.timeLabel.frame = CGRectMake(wifiOffset, 0.0, MAX(8.0, self.bounds.size.width - wifiOffset), MAX(20.0, pillHeight - 7.0));
@@ -95,6 +95,18 @@ static NSInteger LWVisibleSignalLayers(CALayer *layer) {
     CGRect outline = CGRectInset(self.pillView.bounds, 1.5, 1.5);
     self.batteryOutlineLayer.frame = self.pillView.bounds;
     self.batteryOutlineLayer.path = [UIBezierPath bezierPathWithRoundedRect:outline cornerRadius:CGRectGetHeight(outline) / 2.0].CGPath;
+    // Remove a short segment from the bottom stroke. The signal dots occupy
+    // this actual break in the outline rather than sitting inside a hole.
+    CAShapeLayer *mask = [CAShapeLayer layer];
+    mask.frame = self.pillView.bounds;
+    mask.fillRule = kCAFillRuleEvenOdd;
+    UIBezierPath *maskPath = [UIBezierPath bezierPathWithRect:self.pillView.bounds];
+    CGFloat notchWidth = MIN(28.0, self.bounds.size.width - 8.0);
+    [maskPath appendPath:[UIBezierPath bezierPathWithRect:CGRectMake((self.bounds.size.width - notchWidth) / 2.0,
+                                                                       self.bounds.size.height - 8.0,
+                                                                       notchWidth, 10.0)]];
+    mask.path = maskPath.CGPath;
+    self.batteryOutlineLayer.mask = mask;
     self.batteryOutlineLayer.strokeEnd = MIN(1.0, MAX(0.04, self.batteryFraction));
     BOOL charging = UIDevice.currentDevice.batteryState == UIDeviceBatteryStateCharging;
     UIColor *color = charging ? UIColor.systemGreenColor : (NSProcessInfo.processInfo.lowPowerModeEnabled ? UIColor.systemYellowColor : UIColor.whiteColor);
