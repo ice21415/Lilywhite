@@ -152,6 +152,7 @@ static CGFloat LWNativeTimeHeight;
 static CGRect LWNativeTimeRect;
 static UIView *LWNativeTimeView;
 static NSString *LWRuntimeMap;
+static NSString *LWTouchRuntimeMap;
 static char LWNativeCapsuleKey;
 static BOOL LWNotificationMapCaptured;
 static UIView *LWNotificationTray;
@@ -162,6 +163,7 @@ static NSMutableDictionary<NSString *, UIImage *> *LWNotificationIconCache;
 static char LWNativeRightHiddenKey;
 
 static void LWStartRuntimeSocket(void);
+static void LWStartTouchRuntimeSocket(void);
 
 static __attribute__((unused)) BOOL LWIsSpringBoardProcess(void) {
     return [NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.apple.springboard"];
@@ -229,8 +231,8 @@ static void LWWriteStatusBarTouchMap(void) {
         }
         free(methods);
     }
-    LWRuntimeMap = output;
-    LWStartRuntimeSocket();
+    LWTouchRuntimeMap = output;
+    LWStartTouchRuntimeSocket();
 }
 
 static __attribute__((unused)) void LWStartRuntimeSocket(void) {
@@ -252,6 +254,31 @@ static __attribute__((unused)) void LWStartRuntimeSocket(void) {
         if (client >= 0) {
             while (!LWRuntimeMap) usleep(100000);
             NSData *data = [LWRuntimeMap dataUsingEncoding:NSUTF8StringEncoding];
+            send(client, data.bytes, data.length, 0);
+            close(client);
+        }
+        close(server);
+    });
+}
+
+static void LWStartTouchRuntimeSocket(void) {
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+        int server = socket(AF_INET, SOCK_STREAM, 0);
+        if (server < 0) return;
+        struct sockaddr_in addr = {0};
+        addr.sin_len = sizeof(addr);
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        addr.sin_port = htons(27044);
+        int yes = 1;
+        setsockopt(server, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
+        if (bind(server, (struct sockaddr *)&addr, sizeof(addr)) != 0 || listen(server, 1) != 0) {
+            close(server);
+            return;
+        }
+        int client = accept(server, NULL, NULL);
+        if (client >= 0) {
+            NSData *data = [LWTouchRuntimeMap dataUsingEncoding:NSUTF8StringEncoding];
             send(client, data.bytes, data.length, 0);
             close(client);
         }
