@@ -23,6 +23,7 @@ static NSString * const LWOverlayTag = @"com.user.lilywhite.overlay";
     self.layer.cornerCurve = kCACornerCurveContinuous;
     self.layer.borderWidth = 1.0;
     self.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.25].CGColor;
+    self.clipsToBounds = YES;
 
     self.timeLabel = [self labelWithFont:[UIFont monospacedDigitSystemFontOfSize:16 weight:UIFontWeightSemibold]];
     self.networkLabel = [self labelWithFont:[UIFont systemFontOfSize:12 weight:UIFontWeightSemibold]];
@@ -50,11 +51,20 @@ static NSString * const LWOverlayTag = @"com.user.lilywhite.overlay";
 - (void)layoutSubviews {
     [super layoutSubviews];
     CGFloat h = self.bounds.size.height;
-    CGFloat x = 10.0;
     NSArray<UILabel *> *labels = @[self.timeLabel, self.networkLabel, self.wifiLabel, self.batteryLabel];
+    CGFloat available = MAX(8.0, self.bounds.size.width - 20.0 - 6.0 * (labels.count - 1));
+    CGFloat intrinsicTotal = 0.0;
+    NSMutableArray<NSNumber *> *intrinsicWidths = [NSMutableArray array];
     for (UILabel *label in labels) {
-        CGFloat width = ceil([label sizeThatFits:CGSizeMake(CGFLOAT_MAX, h)].width);
-        width = MAX(width, 12.0);
+        CGFloat width = MAX(8.0, ceil([label sizeThatFits:CGSizeMake(CGFLOAT_MAX, h)].width));
+        [intrinsicWidths addObject:@(width)];
+        intrinsicTotal += width;
+    }
+    CGFloat scale = MIN(1.0, available / MAX(1.0, intrinsicTotal));
+    CGFloat x = 10.0;
+    for (NSUInteger i = 0; i < labels.count; i++) {
+        UILabel *label = labels[i];
+        CGFloat width = MAX(8.0, floor(intrinsicWidths[i].doubleValue * scale));
         label.frame = CGRectMake(x, 0.0, width, h);
         x += width + 6.0;
     }
@@ -134,7 +144,7 @@ static void LWInstallIntoStatusBar(UIStatusBar *statusBar) {
     if (!hostWindow) return;
     LWStatusWindow = hostWindow;
     LWNativeTimeHeight = 0.0;
-    LWHideNativeTimeItem(statusBar, 0);
+    LWHideNativeTimeItem(hostWindow, 0);
     CGFloat height = statusBar.bounds.size.height;
     // The status bar's bounds include the whole notch-safe region. The native
     // time item is the reliable measurement for the visible strip beside it.
