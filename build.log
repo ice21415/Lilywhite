@@ -3,13 +3,10 @@
 [1;31m> [1;3;39mMaking all for tweak Lilywhite…[m
 [0;31m==> [1;39mPreprocessing Tweak.xm…[m
 [0;32m==> [1;39mCompiling Tweak.xm (arm64e)…[m
-[1mTweak.xm:396:13: [0m[0;1;31merror: [0m[1mcannot initialize a variable of type 'UIView *__strong' with an lvalue of type 'STUIStatusBarStringView *const __unsafe_unretained'[0m
-    UIView *item = self;
-[0;1;32m            ^      ~~~~
-[0m[1mTweak.xm:404:13: [0m[0;1;31merror: [0m[1mcannot initialize a variable of type 'UIView *__strong' with an lvalue of type 'STUIStatusBarStringView *const __unsafe_unretained'[0m
-    UIView *item = self;
-[0;1;32m            ^      ~~~~
-[0m2 errors generated.
+[1mTweak.xm:165:12: [0m[0;1;31merror: [0m[1mcannot initialize a variable of type '__unsafe_unretained Class *' with an rvalue of type 'void *'[0m
+    Class *classes = calloc((size_t)count, sizeof(Class));
+[0;1;32m           ^         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[0m1 error generated.
 make[3]: *** [/Users/runner/work/Lilywhite/Lilywhite/.theos/obj/arm64e/Tweak.xm.6b7b7878.o] Error 1
 rm /Users/runner/work/Lilywhite/Lilywhite/.theos/obj/arm64e/Tweak.xm.mm
 make[2]: *** [/Users/runner/work/Lilywhite/Lilywhite/.theos/obj/arm64e/Lilywhite.dylib] Error 2
