@@ -28,7 +28,7 @@ static NSString * const LWOverlayTag = @"com.user.lilywhite.overlay";
     self.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.25].CGColor;
     self.clipsToBounds = YES;
 
-    self.timeLabel = [self labelWithFont:[UIFont monospacedDigitSystemFontOfSize:16 weight:UIFontWeightSemibold]];
+    self.timeLabel = [self labelWithFont:[UIFont monospacedDigitSystemFontOfSize:13 weight:UIFontWeightSemibold]];
     self.signalLabel = [self labelWithFont:[UIFont systemFontOfSize:9 weight:UIFontWeightMedium]];
     self.wifiImage = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"wifi"]];
     self.wifiImage.tintColor = UIColor.whiteColor;
@@ -64,7 +64,7 @@ static NSString * const LWOverlayTag = @"com.user.lilywhite.overlay";
     [super layoutSubviews];
     CGFloat h = self.bounds.size.height;
     self.timeLabel.frame = CGRectMake(10.0, 0.0, MAX(8.0, self.bounds.size.width - 40.0), h);
-    self.wifiImage.frame = CGRectMake(MAX(8.0, self.bounds.size.width - 29.0), (h - 18.0) / 2.0, 18.0, 18.0);
+    self.wifiImage.frame = CGRectMake(MAX(8.0, self.bounds.size.width - 19.0), (h - 13.0) / 2.0, 13.0, 13.0);
 }
 
 - (CGSize)sizeThatFits:(CGSize)size {
@@ -235,7 +235,7 @@ static void LWInstallIntoStatusBar(UIStatusBar *statusBar) {
     BOOL hasNativeGeometry = !CGRectIsEmpty(LWNativeTimeRect) &&
         CGRectGetWidth(LWNativeTimeRect) > 0.0 && CGRectGetHeight(LWNativeTimeRect) > 0.0;
     CGFloat capsuleHeight = hasNativeGeometry
-        ? MIN(38.0, MAX(34.0, height - 14.0))
+        ? MIN(30.0, MAX(24.0, height - 20.0))
         : MIN(24.0, MAX(18.0, height - 30.0));
     if (LWCapsule.superview != hostWindow) {
         [LWCapsule removeFromSuperview];
@@ -252,7 +252,7 @@ static void LWInstallIntoStatusBar(UIStatusBar *statusBar) {
     CGFloat originX = hasNativeGeometry ? CGRectGetMinX(LWNativeTimeRect) : 8.0;
     CGFloat originY = hasNativeGeometry ? CGRectGetMinY(barRect) + (CGRectGetHeight(barRect) - capsuleHeight) / 2.0 : 18.0;
     CGFloat width = hasNativeGeometry
-        ? MIN(fittingSize.width, CGRectGetWidth(LWNativeTimeRect) + 18.0)
+        ? MIN(fittingSize.width, CGRectGetWidth(LWNativeTimeRect) + 4.0)
         : MIN(fittingSize.width, hostWindow.bounds.size.width * 0.27);
     if (!hasNativeGeometry) {
         originY = CGRectGetMinY(barRect) + MAX(0.0, (CGRectGetHeight(barRect) - capsuleHeight) / 2.0);
