@@ -1,6 +1,4 @@
 {
-    // iOS renders the foreground app's status bar inside that app process,
-    // not only inside SpringBoard. Restrict injection to UIKit processes so
-    // daemons are untouched while SpringBoard and foreground apps are covered.
-    Filter = { Classes = ("UIStatusBar"); };
+    // Load only where the native status-string implementation actually exists.
+    Filter = { Classes = ("STUIStatusBarStringView"); };
 }

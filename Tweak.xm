@@ -1,6 +1,7 @@
 #import <UIKit/UIKit.h>
 #import <UIKit/UIApplication+Private.h>
 #import <UIKit/UIStatusBar.h>
+#import <objc/runtime.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
@@ -9,7 +10,7 @@ static NSString * const LWOverlayTag = @"com.user.lilywhite.overlay";
 static BOOL LWHasWiFi;
 static NSInteger LWSignalBars = 4;
 
-static NSInteger LWVisibleSignalLayers(CALayer *layer) {
+static __attribute__((unused)) NSInteger LWVisibleSignalLayers(CALayer *layer) {
     NSInteger count = 0;
     for (CALayer *child in layer.sublayers ?: @[]) {
         if (child.hidden || child.opacity <= 0.01) continue;
@@ -145,12 +146,13 @@ static CGFloat LWNativeTimeHeight;
 static CGRect LWNativeTimeRect;
 static UIView *LWNativeTimeView;
 static NSString *LWRuntimeMap;
+static char LWNativeCapsuleKey;
 
-static BOOL LWIsSpringBoardProcess(void) {
+static __attribute__((unused)) BOOL LWIsSpringBoardProcess(void) {
     return [NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.apple.springboard"];
 }
 
-static void LWStartRuntimeSocket(void) {
+static __attribute__((unused)) void LWStartRuntimeSocket(void) {
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
         int server = socket(AF_INET, SOCK_STREAM, 0);
         if (server < 0) return;
@@ -176,7 +178,7 @@ static void LWStartRuntimeSocket(void) {
     });
 }
 
-static BOOL LWLooksLikeClockText(NSString *text) {
+static __attribute__((unused)) BOOL LWLooksLikeClockText(NSString *text) {
     if (![text isKindOfClass:NSString.class] || text.length < 4 || text.length > 5) return NO;
     NSUInteger colon = [text rangeOfString:@":"].location;
     if (colon == NSNotFound || colon == 0 || colon + 1 >= text.length) return NO;
@@ -188,7 +190,7 @@ static BOOL LWLooksLikeClockText(NSString *text) {
     return YES;
 }
 
-static void LWWriteRuntimeMap(void) {
+static __attribute__((unused)) void LWWriteRuntimeMap(void) {
     UIApplication *app = UIApplication.sharedApplication;
     NSMutableString *out = [NSMutableString stringWithFormat:@"app=%@ statusBar=%@\\n",
         NSStringFromClass(app.class), NSStringFromClass(app.statusBar.class)];
@@ -227,7 +229,7 @@ static void LWWriteRuntimeMap(void) {
     LWRuntimeMap = [out copy];
 }
 
-static void LWHideNativeTimeItem(UIView *view, NSUInteger depth) {
+static __attribute__((unused)) void LWHideNativeTimeItem(UIView *view, NSUInteger depth) {
     if (!view || depth > 8) return;
     if (view == (UIView *)LWCapsule) return;
     if (view != (UIView *)LWCapsule && [view isKindOfClass:UILabel.class] &&
@@ -301,7 +303,7 @@ static __attribute__((unused)) void LWHideViewsUnderCapsule(UIView *view, UIView
     }
 }
 
-static void LWInstallIntoStatusBar(UIStatusBar *statusBar) {
+static __attribute__((unused)) void LWInstallIntoStatusBar(UIStatusBar *statusBar) {
     if (!statusBar || statusBar.bounds.size.width <= 0.0) return;
     LWStatusBar = statusBar;
     UIWindow *hostWindow = statusBar.window;
@@ -356,46 +358,17 @@ static void LWInstallIntoStatusBar(UIStatusBar *statusBar) {
 }
 
 %ctor {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidFinishLaunchingNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(__unused NSNotification *note) {
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                LWInstallIntoStatusBar(UIApplication.sharedApplication.statusBar);
-            });
-        }];
-        [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidBecomeActiveNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(__unused NSNotification *note) {
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                LWInstallIntoStatusBar(UIApplication.sharedApplication.statusBar);
-            });
-        }];
-        LWInstallIntoStatusBar(UIApplication.sharedApplication.statusBar);
-        // Runtime diagnostics are SpringBoard-only. Foreground applications
-        // need the visual replacement, but must not each create a socket or
-        // write a shared diagnostic file.
-        if (LWIsSpringBoardProcess()) {
-            LWStartRuntimeSocket();
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                LWWriteRuntimeMap();
-            });
-        }
-    });
+    // Native-item hooks below own installation. Do not create a window-level
+    // overlay here: that was the source of the previous lifecycle mismatch.
 }
 
 %hook UIStatusBar
 - (void)didMoveToWindow {
     %orig;
-    UIStatusBar *bar = self;
-    // App switches can create a fresh status-bar instance after the active
-    // notification has already fired. Install on the new instance itself.
-    dispatch_async(dispatch_get_main_queue(), ^{
-        LWInstallIntoStatusBar(bar);
-    });
 }
 
 - (void)layoutSubviews {
     %orig;
-    dispatch_async(dispatch_get_main_queue(), ^{
-        LWInstallIntoStatusBar(self);
-    });
 }
 %end
 
@@ -406,16 +379,27 @@ static void LWInstallIntoStatusBar(UIStatusBar *statusBar) {
 - (void)didMoveToWindow {
     %orig;
     UIView *item = (UIView *)(id)self;
-    dispatch_async(dispatch_get_main_queue(), ^{
-        if (LWStatusBar && item.window) LWInstallIntoStatusBar(LWStatusBar);
-    });
+    if (!item.window || CGRectGetMinX(item.frame) >= 100.0 || CGRectGetWidth(item.frame) > 110.0) return;
+    LWStatusCapsule *capsule = objc_getAssociatedObject(item, &LWNativeCapsuleKey);
+    if (!capsule) {
+        capsule = [[LWStatusCapsule alloc] initWithFrame:item.bounds];
+        capsule.userInteractionEnabled = NO;
+        objc_setAssociatedObject(item, &LWNativeCapsuleKey, capsule, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [item addSubview:capsule];
+    }
+    if ([item isKindOfClass:UILabel.class]) ((UILabel *)item).textColor = UIColor.clearColor;
+    capsule.frame = item.bounds;
+    [capsule updateContent];
 }
 
 - (void)layoutSubviews {
     %orig;
     UIView *item = (UIView *)(id)self;
-    dispatch_async(dispatch_get_main_queue(), ^{
-        if (LWStatusBar && item.window) LWInstallIntoStatusBar(LWStatusBar);
-    });
+    if (!item.window || CGRectGetMinX(item.frame) >= 100.0 || CGRectGetWidth(item.frame) > 110.0) return;
+    LWStatusCapsule *capsule = objc_getAssociatedObject(item, &LWNativeCapsuleKey);
+    if (!capsule) return;
+    if ([item isKindOfClass:UILabel.class]) ((UILabel *)item).textColor = UIColor.clearColor;
+    capsule.frame = item.bounds;
+    [capsule updateContent];
 }
 %end
