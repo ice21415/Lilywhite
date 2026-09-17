@@ -379,27 +379,42 @@ static __attribute__((unused)) void LWInstallIntoStatusBar(UIStatusBar *statusBa
 - (void)didMoveToWindow {
     %orig;
     UIView *item = (UIView *)(id)self;
-    if (!item.window || CGRectGetMinX(item.frame) >= 100.0 || CGRectGetWidth(item.frame) > 110.0) return;
+    if (!item.window) return;
+    CGRect screenRect = [item convertRect:item.bounds toView:item.window];
+    if (CGRectGetMinX(screenRect) >= 110.0 || CGRectGetWidth(screenRect) > 110.0) return;
     LWStatusCapsule *capsule = objc_getAssociatedObject(item, &LWNativeCapsuleKey);
     if (!capsule) {
-        capsule = [[LWStatusCapsule alloc] initWithFrame:item.bounds];
+        capsule = [[LWStatusCapsule alloc] initWithFrame:CGRectZero];
         capsule.userInteractionEnabled = NO;
         objc_setAssociatedObject(item, &LWNativeCapsuleKey, capsule, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        [item addSubview:capsule];
+        [item.superview addSubview:capsule];
     }
     if ([item isKindOfClass:UILabel.class]) ((UILabel *)item).textColor = UIColor.clearColor;
-    capsule.frame = item.bounds;
+    UIView *host = item.superview;
+    CGRect anchor = [item convertRect:item.bounds toView:host];
+    CGFloat h = 24.0;
+    capsule.frame = CGRectMake(CGRectGetMinX(anchor) - 2.0, CGRectGetMidY(anchor) - h / 2.0,
+                               MIN(106.0, CGRectGetWidth(anchor) + 4.0), h);
+    [host bringSubviewToFront:capsule];
     [capsule updateContent];
 }
 
 - (void)layoutSubviews {
     %orig;
     UIView *item = (UIView *)(id)self;
-    if (!item.window || CGRectGetMinX(item.frame) >= 100.0 || CGRectGetWidth(item.frame) > 110.0) return;
+    if (!item.window) return;
+    CGRect screenRect = [item convertRect:item.bounds toView:item.window];
+    if (CGRectGetMinX(screenRect) >= 110.0 || CGRectGetWidth(screenRect) > 110.0) return;
     LWStatusCapsule *capsule = objc_getAssociatedObject(item, &LWNativeCapsuleKey);
     if (!capsule) return;
     if ([item isKindOfClass:UILabel.class]) ((UILabel *)item).textColor = UIColor.clearColor;
-    capsule.frame = item.bounds;
+    UIView *host = item.superview;
+    if (capsule.superview != host) [host addSubview:capsule];
+    CGRect anchor = [item convertRect:item.bounds toView:host];
+    CGFloat h = 24.0;
+    capsule.frame = CGRectMake(CGRectGetMinX(anchor) - 2.0, CGRectGetMidY(anchor) - h / 2.0,
+                               MIN(106.0, CGRectGetWidth(anchor) + 4.0), h);
+    [host bringSubviewToFront:capsule];
     [capsule updateContent];
 }
 %end
