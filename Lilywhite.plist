@@ -1,4 +1,8 @@
 {
     // Load only where the native status-string implementation actually exists.
-    Filter = { Classes = ("STUIStatusBarStringView"); };
+    Filter = {
+        Bundles = ("com.apple.springboard");
+        Classes = ("STUIStatusBarStringView");
+        Mode = "Any";
+    };
 }
