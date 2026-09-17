@@ -282,7 +282,7 @@ static void LWHideNativeTimeItem(UIView *view, NSUInteger depth) {
     }
 }
 
-static void LWHideViewsUnderCapsule(UIView *view, UIView *host, CGRect capsuleRect, NSUInteger depth) {
+static __attribute__((unused)) void LWHideViewsUnderCapsule(UIView *view, UIView *host, CGRect capsuleRect, NSUInteger depth) {
     if (!view || depth > 10 || view == (UIView *)LWCapsule) return;
     for (UIView *child in [view.subviews copy]) {
         if (child == (UIView *)LWCapsule) continue;
