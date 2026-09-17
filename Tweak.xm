@@ -89,6 +89,7 @@ static LWStatusCapsule *LWCapsule;
 static __weak UIStatusBar *LWStatusBar;
 static __weak UIWindow *LWStatusWindow;
 static CGFloat LWNativeTimeHeight;
+static CGRect LWNativeTimeRect;
 
 static void LWWriteRuntimeMap(void) {
     UIApplication *app = UIApplication.sharedApplication;
@@ -116,6 +117,9 @@ static void LWHideNativeTimeItem(UIView *view, NSUInteger depth) {
         view.bounds.size.width > 0.0 && view.bounds.size.width <= 110.0 &&
         view.subviews.count <= 3) {
         LWNativeTimeHeight = MAX(LWNativeTimeHeight, CGRectGetHeight(view.frame));
+        if (LWStatusWindow) {
+            LWNativeTimeRect = [view convertRect:view.bounds toView:LWStatusWindow];
+        }
         view.hidden = YES;
         return;
     }
@@ -146,6 +150,7 @@ static void LWInstallIntoStatusBar(UIStatusBar *statusBar) {
     if (!hostWindow) return;
     LWStatusWindow = hostWindow;
     LWNativeTimeHeight = 0.0;
+    LWNativeTimeRect = CGRectZero;
     LWHideNativeTimeItem(hostWindow, 0);
     CGFloat height = statusBar.bounds.size.height;
     // The status bar's bounds include the whole notch-safe region. The native
@@ -160,8 +165,13 @@ static void LWInstallIntoStatusBar(UIStatusBar *statusBar) {
     }
     CGSize fittingSize = [LWCapsule sizeThatFits:CGSizeMake(statusBar.bounds.size.width, capsuleHeight)];
     // Keep the replacement entirely in the left segment before the notch.
-    CGFloat leftSegment = MIN(116.0, hostWindow.bounds.size.width * 0.31);
-    CGFloat width = MIN(fittingSize.width, MAX(96.0, leftSegment - 4.0));
+    // Use the measured native time item's right edge as the real left-region
+    // boundary. The extra 32pt is only the space needed for the Wi-Fi glyph.
+    CGFloat nativeBoundary = CGRectIsEmpty(LWNativeTimeRect)
+        ? hostWindow.bounds.size.width * 0.27
+        : CGRectGetMaxX(LWNativeTimeRect) + 32.0;
+    CGFloat leftSegment = MIN(hostWindow.bounds.size.width - 8.0, nativeBoundary);
+    CGFloat width = MIN(fittingSize.width, MAX(82.0, leftSegment - 8.0));
     CGRect barRect = [statusBar convertRect:statusBar.bounds toView:hostWindow];
     LWCapsule.frame = CGRectMake(8.0,
         CGRectGetMinY(barRect) + MAX(0.0, (CGRectGetHeight(barRect) - capsuleHeight) / 2.0), width, capsuleHeight);
