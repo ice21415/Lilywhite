@@ -155,6 +155,9 @@ static UIView *LWNativeTimeView;
 static NSString *LWRuntimeMap;
 static char LWNativeCapsuleKey;
 static BOOL LWNotificationMapCaptured;
+static UIView *LWNotificationTray;
+static NSMutableDictionary<NSString *, NSDictionary *> *LWNotificationRequests;
+static NSMutableArray<NSString *> *LWNotificationOrder;
 
 static __attribute__((unused)) BOOL LWIsSpringBoardProcess(void) {
     return [NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.apple.springboard"];
@@ -232,6 +235,75 @@ static BOOL LWIsActualClockItem(UIView *item) {
     id text = nil;
     @try { text = [item valueForKey:@"text"]; } @catch (__unused NSException *e) {}
     return LWLooksLikeClockText(text);
+}
+
+static id LWKVC(id object, NSString *key) {
+    @try { return [object valueForKey:key]; } @catch (__unused NSException *e) { return nil; }
+}
+
+static void LWHideNativeRightStatusItems(UIView *view, UIWindow *window) {
+    for (UIView *child in view.subviews) {
+        NSString *name = NSStringFromClass(child.class);
+        CGRect screenRect = [child convertRect:child.bounds toView:window];
+        BOOL isRight = CGRectGetMidX(screenRect) > window.bounds.size.width * 0.72;
+        BOOL isSystemIndicator = [name containsString:@"Cellular"] || [name containsString:@"Battery"] ||
+            [name containsString:@"Wifi"] || [name containsString:@"WiFi"];
+        if (isRight && isSystemIndicator) child.hidden = YES;
+        LWHideNativeRightStatusItems(child, window);
+    }
+}
+
+static void LWRenderNotificationTray(void) {
+    UIWindow *window = LWStatusWindow;
+    if (!window) return;
+    if (!LWNotificationTray) {
+        LWNotificationTray = [[UIView alloc] initWithFrame:CGRectZero];
+        LWNotificationTray.userInteractionEnabled = NO;
+        [window addSubview:LWNotificationTray];
+    }
+    NSArray<NSString *> *sections = [LWNotificationOrder subarrayWithRange:NSMakeRange(0, MIN(3, LWNotificationOrder.count))];
+    for (UIView *subview in LWNotificationTray.subviews) [subview removeFromSuperview];
+    if (!sections.count) {
+        LWNotificationTray.hidden = YES;
+        return;
+    }
+    CGFloat iconSize = 16.0;
+    CGFloat spacing = 4.0;
+    CGFloat width = sections.count * iconSize + (sections.count - 1) * spacing;
+    LWNotificationTray.frame = CGRectMake(window.bounds.size.width - width - 10.0, 18.0, width, iconSize);
+    LWNotificationTray.hidden = NO;
+    for (NSUInteger i = 0; i < sections.count; i++) {
+        NSDictionary *entry = LWNotificationRequests[sections[i]];
+        UIImage *image = entry[@"image"];
+        UIImageView *imageView = [[UIImageView alloc] initWithImage:image];
+        imageView.frame = CGRectMake(i * (iconSize + spacing), 0.0, iconSize, iconSize);
+        imageView.contentMode = UIViewContentModeScaleAspectFill;
+        imageView.layer.cornerRadius = 4.0;
+        imageView.clipsToBounds = YES;
+        [LWNotificationTray addSubview:imageView];
+    }
+    LWHideNativeRightStatusItems(window, window);
+    [window bringSubviewToFront:LWNotificationTray];
+}
+
+static void LWTrackNotificationRequest(id request, BOOL removed) {
+    if (!request) return;
+    if (!LWNotificationRequests) LWNotificationRequests = [NSMutableDictionary dictionary];
+    if (!LWNotificationOrder) LWNotificationOrder = [NSMutableArray array];
+    NSString *section = LWKVC(request, @"sectionIdentifier");
+    if (![section isKindOfClass:NSString.class] || !section.length) return;
+    if (removed) {
+        [LWNotificationRequests removeObjectForKey:section];
+        [LWNotificationOrder removeObject:section];
+    } else {
+        id bulletin = LWKVC(request, @"bulletin");
+        id icon = LWKVC(bulletin, @"sectionIcon") ?: LWKVC(bulletin, @"icon");
+        if (![icon isKindOfClass:UIImage.class]) return;
+        LWNotificationRequests[section] = @{ @"image": icon };
+        [LWNotificationOrder removeObject:section];
+        [LWNotificationOrder insertObject:section atIndex:0];
+    }
+    dispatch_async(dispatch_get_main_queue(), ^{ LWRenderNotificationTray(); });
 }
 
 static void LWRefreshNativeSignalBars(UIView *root) {
@@ -456,6 +528,7 @@ static __attribute__((unused)) void LWInstallIntoStatusBar(UIStatusBar *statusBa
 - (void)didMoveToWindow {
     %orig;
     UIView *item = (UIView *)(id)self;
+    LWStatusWindow = item.window;
     if (!LWNotificationMapCaptured) {
         LWNotificationMapCaptured = YES;
         LWWriteNotificationRuntimeMap();
@@ -494,6 +567,7 @@ static __attribute__((unused)) void LWInstallIntoStatusBar(UIStatusBar *statusBa
 - (void)layoutSubviews {
     %orig;
     UIView *item = (UIView *)(id)self;
+    LWStatusWindow = item.window;
     if (!LWIsActualClockItem(item)) return;
     LWStatusCapsule *capsule = objc_getAssociatedObject(item, &LWNativeCapsuleKey);
     if (!capsule) return;
@@ -507,5 +581,22 @@ static __attribute__((unused)) void LWInstallIntoStatusBar(UIStatusBar *statusBa
                                MIN(106.0, CGRectGetWidth(anchor) + 4.0), h);
     [host bringSubviewToFront:capsule];
     [capsule updateContent];
+}
+%end
+
+%hook NCNotificationMasterList
+- (void)insertNotificationRequest:(id)request {
+    %orig;
+    LWTrackNotificationRequest(request, NO);
+}
+
+- (void)modifyNotificationRequest:(id)request {
+    %orig;
+    LWTrackNotificationRequest(request, NO);
+}
+
+- (void)removeNotificationRequest:(id)request {
+    %orig;
+    LWTrackNotificationRequest(request, YES);
 }
 %end
