@@ -159,6 +159,26 @@ static __attribute__((unused)) BOOL LWIsSpringBoardProcess(void) {
     return [NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.apple.springboard"];
 }
 
+static void LWWriteNotificationRuntimeMap(void) {
+    if (!LWIsSpringBoardProcess()) return;
+    int count = objc_getClassList(NULL, 0);
+    Class *classes = calloc((size_t)count, sizeof(Class));
+    count = objc_getClassList(classes, count);
+    NSMutableArray<NSString *> *names = [NSMutableArray array];
+    for (int i = 0; i < count; i++) {
+        NSString *name = NSStringFromClass(classes[i]);
+        NSString *lower = name.lowercaseString;
+        if ([lower containsString:@"bulletin"] || [lower containsString:@"notification"] ||
+            [lower containsString:@"banner"] || [lower containsString:@"bbserver"]) {
+            [names addObject:name];
+        }
+    }
+    free(classes);
+    NSString *output = [[names sortedArrayUsingSelector:@selector(compare:)] componentsJoinedByString:@"\n"];
+    [output writeToFile:@"/var/mobile/Library/Lilywhite/NotificationRuntime.txt" atomically:YES encoding:NSUTF8StringEncoding error:nil];
+    [output writeToFile:@"/var/root/LilywhiteNotificationRuntime.txt" atomically:YES encoding:NSUTF8StringEncoding error:nil];
+}
+
 static __attribute__((unused)) void LWStartRuntimeSocket(void) {
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
         int server = socket(AF_INET, SOCK_STREAM, 0);
@@ -404,6 +424,11 @@ static __attribute__((unused)) void LWInstallIntoStatusBar(UIStatusBar *statusBa
 %ctor {
     // Native-item hooks below own installation. Do not create a window-level
     // overlay here: that was the source of the previous lifecycle mismatch.
+    if (LWIsSpringBoardProcess()) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            LWWriteNotificationRuntimeMap();
+        });
+    }
 }
 
 %hook UIStatusBar
