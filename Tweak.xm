@@ -393,7 +393,7 @@ static void LWInstallIntoStatusBar(UIStatusBar *statusBar) {
 %hook STUIStatusBarStringView
 - (void)didMoveToWindow {
     %orig;
-    UIView *item = self;
+    UIView *item = (UIView *)(id)self;
     dispatch_async(dispatch_get_main_queue(), ^{
         if (LWStatusBar && item.window) LWInstallIntoStatusBar(LWStatusBar);
     });
@@ -401,7 +401,7 @@ static void LWInstallIntoStatusBar(UIStatusBar *statusBar) {
 
 - (void)layoutSubviews {
     %orig;
-    UIView *item = self;
+    UIView *item = (UIView *)(id)self;
     dispatch_async(dispatch_get_main_queue(), ^{
         if (LWStatusBar && item.window) LWInstallIntoStatusBar(LWStatusBar);
     });
