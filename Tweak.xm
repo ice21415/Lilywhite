@@ -12,9 +12,9 @@ static NSInteger LWSignalBars = 4;
 static NSInteger LWVisibleSignalLayers(CALayer *layer) {
     NSInteger count = 0;
     for (CALayer *child in layer.sublayers ?: @[]) {
-        if (!child.hidden && child.opacity > 0.01 && child.bounds.size.width > 1.0 && child.bounds.size.height > 1.0) {
-            count++;
-        }
+        if (child.hidden || child.opacity <= 0.01) continue;
+        if (child.bounds.size.width > 1.0 && child.bounds.size.height > 1.0) count++;
+        count += LWVisibleSignalLayers(child);
     }
     return MIN(4, count);
 }
@@ -237,7 +237,9 @@ static void LWHideNativeTimeItem(UIView *view, NSUInteger depth) {
     NSString *haystack = [NSString stringWithFormat:@"%@ %@ %@", className, identifier, label].lowercaseString;
     if ([haystack containsString:@"wifi"] || [haystack containsString:@"wireless"]) LWHasWiFi = YES;
     if ([className containsString:@"STUIStatusBarCellularSignalView"]) {
-        for (NSString *key in @[@"signalStrength", @"strength", @"level", @"numberOfBars", @"signalBars", @"displayedBars", @"currentSignalStrength", @"_numberOfBars"]) {
+        // These are bar-count properties on different iOS releases. Avoid
+        // signalStrength/strength: those often report the raw max (4).
+        for (NSString *key in @[@"numberOfBars", @"signalBars", @"displayedBars", @"_numberOfBars", @"level"]) {
             @try {
                 id value = [view valueForKey:key];
                 if ([value respondsToSelector:@selector(integerValue)]) {
@@ -248,6 +250,10 @@ static void LWHideNativeTimeItem(UIView *view, NSUInteger depth) {
         }
         // Some iOS versions expose no KVC property. Their native signal view
         // still creates one visible layer per bar, which is a reliable fallback.
+        NSString *accessibility = [NSString stringWithFormat:@"%@ %@", view.accessibilityValue ?: @"", view.accessibilityLabel ?: @""];
+        NSRegularExpression *digits = [NSRegularExpression regularExpressionWithPattern:@"(^|[^0-9])([0-4])([^0-9]|$)" options:0 error:nil];
+        NSTextCheckingResult *match = [digits firstMatchInString:accessibility options:0 range:NSMakeRange(0, accessibility.length)];
+        if (match && match.numberOfRanges > 2) LWSignalBars = [[accessibility substringWithRange:[match rangeAtIndex:2]] integerValue];
         if (LWSignalBars == 4) {
             NSInteger layers = LWVisibleSignalLayers(view.layer);
             if (layers > 0) LWSignalBars = layers;
@@ -307,8 +313,8 @@ static void LWInstallIntoStatusBar(UIStatusBar *statusBar) {
     // Reserve a small lower dock for the signal-hole without changing the
     // measured native left segment width.
     CGFloat capsuleHeight = hasNativeGeometry
-        ? MIN(38.0, MAX(34.0, height - 10.0))
-        : MIN(34.0, MAX(28.0, height - 20.0));
+        ? MIN(28.0, MAX(24.0, height - 22.0))
+        : MIN(26.0, MAX(22.0, height - 28.0));
     if (LWCapsule.superview != hostWindow) {
         [LWCapsule removeFromSuperview];
         LWCapsule = [[LWStatusCapsule alloc] initWithFrame:CGRectZero];
