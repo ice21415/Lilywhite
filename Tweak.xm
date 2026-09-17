@@ -94,7 +94,11 @@ static __attribute__((unused)) NSInteger LWVisibleSignalLayers(CALayer *layer) {
     self.batteryOutlineLayer.frame = self.pillView.bounds;
     self.batteryOutlineLayer.path = [UIBezierPath bezierPathWithRoundedRect:outline cornerRadius:CGRectGetHeight(outline) / 2.0].CGPath;
     self.batteryOutlineLayer.mask = nil;
-    self.batteryOutlineLayer.strokeEnd = MIN(1.0, MAX(0.04, self.batteryFraction));
+    // Keep the charged end fixed on the right: as charge falls, the outline
+    // retracts from left to right instead of growing left to right.
+    CGFloat visibleFraction = MIN(1.0, MAX(0.04, self.batteryFraction));
+    self.batteryOutlineLayer.strokeStart = 1.0 - visibleFraction;
+    self.batteryOutlineLayer.strokeEnd = 1.0;
     BOOL charging = UIDevice.currentDevice.batteryState == UIDeviceBatteryStateCharging;
     UIColor *color = charging ? UIColor.systemGreenColor : (NSProcessInfo.processInfo.lowPowerModeEnabled ? UIColor.systemYellowColor : UIColor.whiteColor);
     self.batteryOutlineLayer.strokeColor = color.CGColor;
