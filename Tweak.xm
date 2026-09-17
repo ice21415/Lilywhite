@@ -115,8 +115,9 @@ static void LWWriteRuntimeMap(void) {
         }
     }
     __block NSUInteger count = 0;
-    __block void (^dump)(UIView *, NSUInteger);
-    dump = ^(UIView *view, NSUInteger depth) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-retain-cycles"
+    void (^dump)(UIView *, NSUInteger) = ^(UIView *view, NSUInteger depth) {
         if (!view || depth > 10 || count++ > 800) return;
         NSString *text = @"";
         if ([view isKindOfClass:UILabel.class]) text = ((UILabel *)view).text ?: @"";
@@ -125,6 +126,7 @@ static void LWWriteRuntimeMap(void) {
             NSStringFromClass(view.class), NSStringFromCGRect([view convertRect:view.bounds toView:nil]), text, view.hidden];
         for (UIView *child in [view.subviews copy]) dump(child, depth + 1);
     };
+#pragma clang diagnostic pop
     for (UIScene *scene in app.connectedScenes) {
         if (![scene isKindOfClass:UIWindowScene.class]) continue;
         for (UIWindow *window in ((UIWindowScene *)scene).windows) dump(window, 0);
