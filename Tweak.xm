@@ -283,19 +283,55 @@ static void LWTrackNotificationRequest(id request, BOOL removed) {
 }
 
 static void LWLoadExistingNotificationRequests(id masterList) {
+    if (!masterList) return;
+    // iOS 17 keeps the rendered requests in sections on some builds, while
+    // other builds expose them directly.  Probe both forms rather than
+    // assuming _visibleNotificationRequests is populated.
+    NSMutableArray<NSString *> *debug = [NSMutableArray arrayWithObject:[NSString stringWithFormat:@"master=%@", NSStringFromClass([masterList class])]];
+    NSMutableArray *containers = [NSMutableArray array];
     SEL selector = NSSelectorFromString(@"_visibleNotificationRequests");
-    if (!masterList || ![masterList respondsToSelector:selector]) return;
+    if ([masterList respondsToSelector:selector]) {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
-    id requests = [masterList performSelector:selector];
+        id requests = [masterList performSelector:selector];
 #pragma clang diagnostic pop
-    if (![requests conformsToProtocol:@protocol(NSFastEnumeration)]) return;
-    NSMutableArray<NSString *> *debug = [NSMutableArray arrayWithObject:[NSString stringWithFormat:@"requests=%lu", (unsigned long)[requests count]]];
-    for (id request in requests) {
-        id bulletin = LWKVC(request, @"bulletin");
-        id icon = LWKVC(bulletin, @"sectionIcon") ?: LWKVC(bulletin, @"icon");
-        [debug addObject:[NSString stringWithFormat:@"request=%@ section=%@ bulletin=%@ icon=%@", NSStringFromClass([request class]), LWKVC(request, @"sectionIdentifier"), NSStringFromClass([bulletin class]), NSStringFromClass([icon class])]];
-        LWTrackNotificationRequest(request, NO);
+        if (requests) [containers addObject:@{ @"name": @"visible", @"value": requests }];
+    }
+    for (NSString *key in @[@"notificationSections", @"sections", @"_notificationSections"]) {
+        id value = LWKVC(masterList, key);
+        if (value) [containers addObject:@{ @"name": key, @"value": value }];
+    }
+    for (NSDictionary *containerInfo in containers) {
+        id container = containerInfo[@"value"];
+        NSString *name = containerInfo[@"name"];
+        if (![container conformsToProtocol:@protocol(NSFastEnumeration)]) {
+            [debug addObject:[NSString stringWithFormat:@"%@=%@ (not enumerable)", name, NSStringFromClass([container class])]];
+            continue;
+        }
+        NSArray *objects = [container isKindOfClass:NSArray.class] ? container : [container allObjects];
+        [debug addObject:[NSString stringWithFormat:@"%@ count=%lu", name, (unsigned long)objects.count]];
+        for (id object in objects) {
+            id bulletin = LWKVC(object, @"bulletin");
+            if (bulletin) {
+                id icon = LWKVC(bulletin, @"sectionIcon") ?: LWKVC(bulletin, @"icon");
+                [debug addObject:[NSString stringWithFormat:@"request=%@ section=%@ bulletin=%@ icon=%@", NSStringFromClass([object class]), LWKVC(object, @"sectionIdentifier"), NSStringFromClass([bulletin class]), NSStringFromClass([icon class])]];
+                LWTrackNotificationRequest(object, NO);
+                continue;
+            }
+            [debug addObject:[NSString stringWithFormat:@"section=%@", NSStringFromClass([object class])]];
+            for (NSString *key in @[@"notificationRequests", @"requests", @"visibleNotificationRequests", @"_visibleNotificationRequests"]) {
+                id sectionRequests = LWKVC(object, key);
+                if (![sectionRequests conformsToProtocol:@protocol(NSFastEnumeration)]) continue;
+                NSArray *requestList = [sectionRequests isKindOfClass:NSArray.class] ? sectionRequests : [sectionRequests allObjects];
+                [debug addObject:[NSString stringWithFormat:@"  %@ count=%lu", key, (unsigned long)requestList.count]];
+                for (id request in requestList) {
+                    id requestBulletin = LWKVC(request, @"bulletin");
+                    id icon = LWKVC(requestBulletin, @"sectionIcon") ?: LWKVC(requestBulletin, @"icon");
+                    [debug addObject:[NSString stringWithFormat:@"  request=%@ section=%@ bulletin=%@ icon=%@", NSStringFromClass([request class]), LWKVC(request, @"sectionIdentifier"), NSStringFromClass([requestBulletin class]), NSStringFromClass([icon class])]];
+                    LWTrackNotificationRequest(request, NO);
+                }
+            }
+        }
     }
     LWRuntimeMap = [debug componentsJoinedByString:@"\n"];
     LWStartRuntimeSocket();
