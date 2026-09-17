@@ -6,11 +6,14 @@
 #include <unistd.h>
 
 static NSString * const LWOverlayTag = @"com.user.lilywhite.overlay";
+static BOOL LWHasWiFi;
+static NSString *LWCellularType;
 
 @interface LWStatusCapsule : UIView
 @property(nonatomic, strong) UILabel *timeLabel;
 @property(nonatomic, strong) UILabel *signalLabel;
 @property(nonatomic, strong) UIImageView *wifiImage;
+@property(nonatomic, strong) CAShapeLayer *batteryOutlineLayer;
 @property(nonatomic, strong) NSTimer *timer;
 @property(nonatomic, assign) CGFloat batteryFraction;
 @end
@@ -24,8 +27,6 @@ static NSString * const LWOverlayTag = @"com.user.lilywhite.overlay";
     self.backgroundColor = [UIColor colorWithWhite:0.10 alpha:0.86];
     self.layer.cornerRadius = 18.0;
     self.layer.cornerCurve = kCACornerCurveContinuous;
-    self.layer.borderWidth = 1.0;
-    self.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.25].CGColor;
     self.clipsToBounds = YES;
 
     self.timeLabel = [self labelWithFont:[UIFont monospacedDigitSystemFontOfSize:13 weight:UIFontWeightSemibold]];
@@ -33,22 +34,17 @@ static NSString * const LWOverlayTag = @"com.user.lilywhite.overlay";
     self.wifiImage = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"wifi"]];
     self.wifiImage.tintColor = UIColor.whiteColor;
     self.wifiImage.contentMode = UIViewContentModeScaleAspectFit;
+    self.batteryOutlineLayer = [CAShapeLayer layer];
+    self.batteryOutlineLayer.fillColor = UIColor.clearColor.CGColor;
+    self.batteryOutlineLayer.lineWidth = 1.8;
+    [self.layer addSublayer:self.batteryOutlineLayer];
     [self addSubview:self.timeLabel];
+    [self addSubview:self.signalLabel];
     [self addSubview:self.wifiImage];
     [[UIDevice currentDevice] setBatteryMonitoringEnabled:YES];
     self.timer = [NSTimer scheduledTimerWithTimeInterval:1.0 target:self selector:@selector(updateContent) userInfo:nil repeats:YES];
     [self updateContent];
     return self;
-}
-
-- (void)drawRect:(CGRect)rect {
-    [super drawRect:rect];
-    CGFloat inset = 1.5;
-    CGRect outline = CGRectInset(self.bounds, inset, inset);
-    UIBezierPath *path = [UIBezierPath bezierPathWithRoundedRect:outline cornerRadius:CGRectGetHeight(outline) / 2.0];
-    [[UIColor colorWithWhite:1.0 alpha:(0.55 + 0.40 * self.batteryFraction)] setStroke];
-    path.lineWidth = 1.8;
-    [path stroke];
 }
 
 - (UILabel *)labelWithFont:(UIFont *)font {
@@ -64,7 +60,15 @@ static NSString * const LWOverlayTag = @"com.user.lilywhite.overlay";
     [super layoutSubviews];
     CGFloat h = self.bounds.size.height;
     self.timeLabel.frame = CGRectMake(10.0, 0.0, MAX(8.0, self.bounds.size.width - 40.0), h);
-    self.wifiImage.frame = CGRectMake(MAX(8.0, self.bounds.size.width - 19.0), (h - 13.0) / 2.0, 13.0, 13.0);
+    self.signalLabel.frame = CGRectMake(5.0, h - 10.0, MAX(8.0, self.bounds.size.width - 10.0), 9.0);
+    self.wifiImage.frame = CGRectMake(MAX(8.0, self.bounds.size.width - 19.0), 2.0, 13.0, 13.0);
+    CGRect outline = CGRectInset(self.bounds, 1.5, 1.5);
+    self.batteryOutlineLayer.frame = self.bounds;
+    self.batteryOutlineLayer.path = [UIBezierPath bezierPathWithRoundedRect:outline cornerRadius:CGRectGetHeight(outline) / 2.0].CGPath;
+    self.batteryOutlineLayer.strokeEnd = MIN(1.0, MAX(0.04, self.batteryFraction));
+    BOOL charging = UIDevice.currentDevice.batteryState == UIDeviceBatteryStateCharging;
+    UIColor *color = charging ? UIColor.systemGreenColor : (NSProcessInfo.processInfo.lowPowerModeEnabled ? UIColor.systemYellowColor : UIColor.whiteColor);
+    self.batteryOutlineLayer.strokeColor = color.CGColor;
 }
 
 - (CGSize)sizeThatFits:(CGSize)size {
@@ -79,10 +83,12 @@ static NSString * const LWOverlayTag = @"com.user.lilywhite.overlay";
     // Do not instantiate CoreTelephony from SpringBoard. It is not needed for
     // the visual smoke test and keeps this build independent of its service
     // lifecycle during SpringBoard launch.
-    self.signalLabel.text = @"";
+    self.signalLabel.text = LWCellularType ?: @"LTE";
+    self.wifiImage.hidden = !LWHasWiFi;
 
     UIDevice *device = UIDevice.currentDevice;
     self.batteryFraction = device.batteryLevel >= 0.0 ? MIN(1.0, MAX(0.0, device.batteryLevel)) : 1.0;
+    [self setNeedsLayout];
     [self setNeedsDisplay];
 }
 
@@ -185,6 +191,12 @@ static void LWHideNativeTimeItem(UIView *view, NSUInteger depth) {
     NSString *identifier = view.accessibilityIdentifier ?: @"";
     NSString *label = view.accessibilityLabel ?: @"";
     NSString *haystack = [NSString stringWithFormat:@"%@ %@ %@", className, identifier, label].lowercaseString;
+    if ([haystack containsString:@"wifi"] || [haystack containsString:@"wireless"]) LWHasWiFi = YES;
+    if ([className containsString:@"STUIStatusBarStringView"] && CGRectGetMinX(view.frame) > 250.0) {
+        NSString *value = nil;
+        @try { value = [view valueForKey:@"text"]; } @catch (__unused NSException *e) {}
+        if ([value isKindOfClass:NSString.class] && value.length > 0 && value.length < 8 && ![value isEqualToString:@"VPN"]) LWCellularType = value;
+    }
     BOOL nativeLeftString = [className containsString:@"STUIStatusBarStringView"] &&
         CGRectGetMinX(view.frame) < 100.0 && CGRectGetWidth(view.frame) <= 100.0;
     // iOS 17 uses private UIStatusBar*Time* item views. Do not hide a broad
@@ -227,6 +239,8 @@ static void LWInstallIntoStatusBar(UIStatusBar *statusBar) {
     LWStatusWindow = hostWindow;
     LWNativeTimeHeight = 0.0;
     LWNativeTimeRect = CGRectZero;
+    LWHasWiFi = NO;
+    LWCellularType = nil;
     LWHideNativeTimeItem(hostWindow, 0);
     CGFloat height = statusBar.bounds.size.height;
     // Reuse the native time item's complete geometry. This is the only
@@ -258,6 +272,7 @@ static void LWInstallIntoStatusBar(UIStatusBar *statusBar) {
         originY = CGRectGetMinY(barRect) + MAX(0.0, (CGRectGetHeight(barRect) - capsuleHeight) / 2.0);
     }
     LWCapsule.frame = CGRectMake(originX, originY, width, capsuleHeight);
+    [LWCapsule updateContent];
     LWHideViewsUnderCapsule(hostWindow, hostWindow, LWCapsule.frame, 0);
     [hostWindow bringSubviewToFront:LWCapsule];
 }
