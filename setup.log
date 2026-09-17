@@ -5,9 +5,9 @@ ldid
 [34m==>[0m [1mWould install 1 dependency for ldid:[0m
 libplist
 [32m==>[0m [1mFetching downloads for: [32mldid[39m[0m
+✔︎ Bottle Manifest libplist (2.7.0)
 ✔︎ Bottle ldid (2.1.5_1)
 ✔︎ Bottle libplist (2.7.0)
-✔︎ Bottle Manifest libplist (2.7.0)
 [32m==>[0m [1mInstalling ldid dependency: [32mlibplist[39m[0m
 [34m==>[0m [1mPouring libplist--2.7.0.arm64_sonoma.bottle.tar.gz[0m
 🍺  /opt/homebrew/Cellar/libplist/2.7.0: 32 files, 606.6KB
