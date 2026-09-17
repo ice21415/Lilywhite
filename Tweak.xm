@@ -7,6 +7,7 @@ static NSString * const LWOverlayTag = @"com.user.lilywhite.overlay";
 @interface LWStatusCapsule : UIView
 @property(nonatomic, strong) UILabel *timeLabel;
 @property(nonatomic, strong) UILabel *signalLabel;
+@property(nonatomic, strong) UIImageView *wifiImage;
 @property(nonatomic, strong) NSTimer *timer;
 @property(nonatomic, assign) CGFloat batteryFraction;
 @end
@@ -24,10 +25,13 @@ static NSString * const LWOverlayTag = @"com.user.lilywhite.overlay";
     self.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.25].CGColor;
     self.clipsToBounds = YES;
 
-    self.timeLabel = [self labelWithFont:[UIFont monospacedDigitSystemFontOfSize:14 weight:UIFontWeightSemibold]];
+    self.timeLabel = [self labelWithFont:[UIFont monospacedDigitSystemFontOfSize:16 weight:UIFontWeightSemibold]];
     self.signalLabel = [self labelWithFont:[UIFont systemFontOfSize:9 weight:UIFontWeightMedium]];
+    self.wifiImage = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"wifi"]];
+    self.wifiImage.tintColor = UIColor.whiteColor;
+    self.wifiImage.contentMode = UIViewContentModeScaleAspectFit;
     [self addSubview:self.timeLabel];
-    [self addSubview:self.signalLabel];
+    [self addSubview:self.wifiImage];
     [[UIDevice currentDevice] setBatteryMonitoringEnabled:YES];
     self.timer = [NSTimer scheduledTimerWithTimeInterval:1.0 target:self selector:@selector(updateContent) userInfo:nil repeats:YES];
     [self updateContent];
@@ -39,15 +43,9 @@ static NSString * const LWOverlayTag = @"com.user.lilywhite.overlay";
     CGFloat inset = 1.5;
     CGRect outline = CGRectInset(self.bounds, inset, inset);
     UIBezierPath *path = [UIBezierPath bezierPathWithRoundedRect:outline cornerRadius:CGRectGetHeight(outline) / 2.0];
-    [[UIColor colorWithWhite:1.0 alpha:0.92] setStroke];
+    [[UIColor colorWithWhite:1.0 alpha:(0.55 + 0.40 * self.batteryFraction)] setStroke];
     path.lineWidth = 1.8;
     [path stroke];
-    CGFloat progressWidth = CGRectGetWidth(outline) * MIN(1.0, MAX(0.0, self.batteryFraction));
-    if (progressWidth > 0.0) {
-        UIBezierPath *progress = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(CGRectGetMinX(outline), CGRectGetMinY(outline), progressWidth, CGRectGetHeight(outline)) cornerRadius:CGRectGetHeight(outline) / 2.0];
-        [[UIColor colorWithWhite:1.0 alpha:0.20] setFill];
-        [progress fill];
-    }
 }
 
 - (UILabel *)labelWithFont:(UIFont *)font {
@@ -62,12 +60,12 @@ static NSString * const LWOverlayTag = @"com.user.lilywhite.overlay";
 - (void)layoutSubviews {
     [super layoutSubviews];
     CGFloat h = self.bounds.size.height;
-    self.timeLabel.frame = CGRectMake(5.0, 1.0, MAX(8.0, self.bounds.size.width - 10.0), MAX(16.0, h - 9.0));
-    self.signalLabel.frame = CGRectMake(5.0, h - 10.0, MAX(8.0, self.bounds.size.width - 10.0), 9.0);
+    self.timeLabel.frame = CGRectMake(11.0, 0.0, MAX(8.0, self.bounds.size.width - 43.0), h);
+    self.wifiImage.frame = CGRectMake(MAX(8.0, self.bounds.size.width - 31.0), 8.0, 18.0, 18.0);
 }
 
 - (CGSize)sizeThatFits:(CGSize)size {
-    return CGSizeMake(82.0, size.height);
+    return CGSizeMake(108.0, size.height);
 }
 
 - (void)updateContent {
@@ -78,7 +76,7 @@ static NSString * const LWOverlayTag = @"com.user.lilywhite.overlay";
     // Do not instantiate CoreTelephony from SpringBoard. It is not needed for
     // the visual smoke test and keeps this build independent of its service
     // lifecycle during SpringBoard launch.
-    self.signalLabel.text = @"▮▮▮ 5G";
+    self.signalLabel.text = @"";
 
     UIDevice *device = UIDevice.currentDevice;
     self.batteryFraction = device.batteryLevel >= 0.0 ? MIN(1.0, MAX(0.0, device.batteryLevel)) : 1.0;
@@ -152,9 +150,7 @@ static void LWInstallIntoStatusBar(UIStatusBar *statusBar) {
     CGFloat height = statusBar.bounds.size.height;
     // The status bar's bounds include the whole notch-safe region. The native
     // time item is the reliable measurement for the visible strip beside it.
-    CGFloat capsuleHeight = LWNativeTimeHeight > 0.0
-        ? MIN(24.0, MAX(18.0, LWNativeTimeHeight))
-        : MIN(24.0, MAX(18.0, height - 30.0));
+    CGFloat capsuleHeight = MIN(38.0, MAX(34.0, height - 16.0));
     if (LWCapsule.superview != hostWindow) {
         [LWCapsule removeFromSuperview];
         LWCapsule = [[LWStatusCapsule alloc] initWithFrame:CGRectZero];
@@ -164,8 +160,8 @@ static void LWInstallIntoStatusBar(UIStatusBar *statusBar) {
     }
     CGSize fittingSize = [LWCapsule sizeThatFits:CGSizeMake(statusBar.bounds.size.width, capsuleHeight)];
     // Keep the replacement entirely in the left segment before the notch.
-    CGFloat leftSegment = MIN(145.0, hostWindow.bounds.size.width * 0.30);
-    CGFloat width = MIN(fittingSize.width, MAX(96.0, leftSegment - 8.0));
+    CGFloat leftSegment = MIN(116.0, hostWindow.bounds.size.width * 0.31);
+    CGFloat width = MIN(fittingSize.width, MAX(96.0, leftSegment - 4.0));
     CGRect barRect = [statusBar convertRect:statusBar.bounds toView:hostWindow];
     LWCapsule.frame = CGRectMake(8.0,
         CGRectGetMinY(barRect) + MAX(0.0, (CGRectGetHeight(barRect) - capsuleHeight) / 2.0), width, capsuleHeight);
