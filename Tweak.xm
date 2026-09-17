@@ -143,7 +143,7 @@ static __weak UIStatusBar *LWStatusBar;
 static __weak UIWindow *LWStatusWindow;
 static CGFloat LWNativeTimeHeight;
 static CGRect LWNativeTimeRect;
-static __weak UIView *LWNativeTimeView;
+static UIView *LWNativeTimeView;
 static NSString *LWRuntimeMap;
 
 static void LWStartRuntimeSocket(void) {
@@ -311,6 +311,7 @@ static void LWInstallIntoStatusBar(UIStatusBar *statusBar) {
     LWHideNativeTimeItem(hostWindow, 0);
     UIView *nativeView = LWNativeTimeView;
     UIView *host = nativeView.superview ?: (UIView *)hostWindow;
+    host.clipsToBounds = NO;
     CGFloat height = statusBar.bounds.size.height;
     // Reuse the native time item's complete geometry. This is the only
     // device-specific measurement that is guaranteed to stay outside the
@@ -342,6 +343,7 @@ static void LWInstallIntoStatusBar(UIStatusBar *statusBar) {
         originY = 18.0;
     }
     LWCapsule.frame = CGRectMake(originX, originY, width, capsuleHeight);
+    LWCapsule.hidden = NO;
     [LWCapsule updateContent];
     [host bringSubviewToFront:LWCapsule];
 }
