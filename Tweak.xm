@@ -448,6 +448,14 @@ static __attribute__((unused)) void LWInstallIntoStatusBar(UIStatusBar *statusBa
     if (!LWNotificationMapCaptured) {
         LWNotificationMapCaptured = YES;
         LWWriteNotificationRuntimeMap();
+        NSArray<NSString *> *candidates = @[
+            @"BBServer", @"SBBulletinBannerController", @"NCNotificationMasterList",
+            @"NCNotificationListViewController", @"NCNotificationRequest",
+            @"NCNotificationStructuredListViewController", @"BBBulletin"
+        ];
+        NSMutableArray<NSString *> *available = [NSMutableArray array];
+        for (NSString *name in candidates) if (NSClassFromString(name)) [available addObject:name];
+        NSLog(@"[Lilywhite] native status hook active; notification classes: %@", [available componentsJoinedByString:@", "]);
     }
     // The text is commonly still nil at this point. layoutSubviews below
     // performs the exact clock check after the system has configured it.
