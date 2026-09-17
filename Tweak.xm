@@ -32,6 +32,7 @@ static __attribute__((unused)) NSInteger LWVisibleSignalLayers(CALayer *layer) {
 @property(nonatomic, assign) CGFloat batteryFraction;
 @property(nonatomic, strong) NSDate *batteryPercentageVisibleUntil;
 - (void)showBatteryPercentage;
+- (void)handleNativeStatusBarAction:(UIGestureRecognizer *)recognizer;
 @end
 
 @implementation LWStatusCapsule
@@ -121,6 +122,14 @@ static __attribute__((unused)) NSInteger LWVisibleSignalLayers(CALayer *layer) {
     [self updateContent];
 }
 
+- (void)handleNativeStatusBarAction:(UIGestureRecognizer *)recognizer {
+    UIWindow *window = recognizer.view.window ?: self.window;
+    if (!window || recognizer.state != UIGestureRecognizerStateEnded) return;
+    CGPoint point = [recognizer locationInView:window];
+    CGRect capsuleFrame = [self convertRect:self.bounds toView:window];
+    if (CGRectContainsPoint(capsuleFrame, point)) [self showBatteryPercentage];
+}
+
 - (void)updateContent {
     // Do not instantiate CoreTelephony from SpringBoard. It is not needed for
     // the visual smoke test and keeps this build independent of its service
@@ -154,6 +163,7 @@ static UIView *LWNativeTimeView;
 static NSString *LWRuntimeMap;
 static NSString *LWTouchRuntimeMap;
 static char LWNativeCapsuleKey;
+static char LWNativeActionTargetKey;
 static BOOL LWNotificationMapCaptured;
 static UIView *LWNotificationTray;
 static __weak UIView *LWNativeRightAnchor;
@@ -164,6 +174,17 @@ static char LWNativeRightHiddenKey;
 
 static void LWStartRuntimeSocket(void);
 static void LWStartTouchRuntimeSocket(void);
+
+static void LWAttachNativeStatusBarAction(UIView *item, LWStatusCapsule *capsule) {
+    for (UIView *ancestor = item; ancestor; ancestor = ancestor.superview) {
+        for (UIGestureRecognizer *gesture in ancestor.gestureRecognizers ?: @[]) {
+            if (![NSStringFromClass(gesture.class) containsString:@"STUIStatusBarActionGestureRecognizer"]) continue;
+            if (objc_getAssociatedObject(gesture, &LWNativeActionTargetKey)) continue;
+            [gesture addTarget:capsule action:@selector(handleNativeStatusBarAction:)];
+            objc_setAssociatedObject(gesture, &LWNativeActionTargetKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+    }
+}
 
 static __attribute__((unused)) BOOL LWIsSpringBoardProcess(void) {
     return [NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.apple.springboard"];
@@ -737,19 +758,6 @@ static __attribute__((unused)) void LWInstallIntoStatusBar(UIStatusBar *statusBa
 }
 %end
 
-// The system's STUIStatusBarActionGestureRecognizer, rather than the window
-// hit-test path, owns a status-bar tap on iOS 17. Hook its recognised state
-// and use its native location so only the Lilywhite capsule responds.
-%hook STUIStatusBarActionGestureRecognizer
-- (void)setState:(UIGestureRecognizerState)state {
-    %orig;
-    if (state != UIGestureRecognizerStateEnded || !LWCapsule || LWCapsule.hidden || !LWStatusWindow) return;
-    CGPoint point = [(UIGestureRecognizer *)(id)self locationInView:LWStatusWindow];
-    CGRect capsuleFrame = [LWCapsule convertRect:LWCapsule.bounds toView:LWStatusWindow];
-    if (CGRectContainsPoint(capsuleFrame, point)) [LWCapsule showBatteryPercentage];
-}
-%end
-
 // Use the native cellular item only as a layout anchor.  The notification
 // tray becomes its sibling in the same STUI foreground hierarchy, exactly as
 // the left capsule is a sibling of the native clock item.
@@ -803,7 +811,7 @@ static void LWUpdateNativeRightAnchor(UIView *item) {
     LWStatusCapsule *capsule = objc_getAssociatedObject(item, &LWNativeCapsuleKey);
     if (!capsule) {
         capsule = [[LWStatusCapsule alloc] initWithFrame:CGRectZero];
-        capsule.userInteractionEnabled = NO;
+        capsule.userInteractionEnabled = YES;
         objc_setAssociatedObject(item, &LWNativeCapsuleKey, capsule, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         [item.superview addSubview:capsule];
     }
@@ -815,6 +823,7 @@ static void LWUpdateNativeRightAnchor(UIView *item) {
     capsule.frame = CGRectMake(CGRectGetMinX(anchor) - 2.0, CGRectGetMidY(anchor) - h / 2.0,
                                MIN(106.0, CGRectGetWidth(anchor) + 4.0), h);
     [host bringSubviewToFront:capsule];
+    LWAttachNativeStatusBarAction(item, capsule);
     [capsule updateContent];
 }
 
@@ -834,6 +843,7 @@ static void LWUpdateNativeRightAnchor(UIView *item) {
     capsule.frame = CGRectMake(CGRectGetMinX(anchor) - 2.0, CGRectGetMidY(anchor) - h / 2.0,
                                MIN(106.0, CGRectGetWidth(anchor) + 4.0), h);
     [host bringSubviewToFront:capsule];
+    LWAttachNativeStatusBarAction(item, capsule);
     [capsule updateContent];
 }
 %end
