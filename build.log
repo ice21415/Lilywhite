@@ -3,12 +3,9 @@
 [1;31m> [1;3;39mMaking all for tweak Lilywhite…[m
 [0;31m==> [1;39mPreprocessing Tweak.xm…[m
 [0;32m==> [1;39mCompiling Tweak.xm (arm64e)…[m
-[1mTweak.xm:312:31: [0m[0;1;31merror: [0m[1mperformSelector may cause a leak because its selector is unknown [-Werror,-Warc-performSelector-leaks][0m
-    id requests = [masterList performSelector:selector];
-[0;1;32m                              ^
-[0m[1mTweak.xm:312:47: [0m[0;1;30mnote: [0mused here[0m
-    id requests = [masterList performSelector:selector];
-[0;1;32m                                              ^
+[1mTweak.xm:217:53: [0m[0;1;31merror: [0m[1mexpected identifier[0m
+    [LWDescribeStatusBarTouchView(window, 0, output)];
+[0;1;32m                                                    ^
 [0m1 error generated.
 make[3]: *** [/Users/runner/work/Lilywhite/Lilywhite/.theos/obj/arm64e/Tweak.xm.6b7b7878.o] Error 1
 rm /Users/runner/work/Lilywhite/Lilywhite/.theos/obj/arm64e/Tweak.xm.mm
