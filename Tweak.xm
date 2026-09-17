@@ -83,33 +83,6 @@ static NSString * const LWOverlayTag = @"com.user.lilywhite.overlay";
 // Keep this first test build inside an existing SpringBoard window instead.
 static LWStatusCapsule *LWCapsule;
 
-static void LWLogNativeStatusBarCandidates(UIWindow *window) {
-    NSMutableArray *pending = [NSMutableArray arrayWithObject:window];
-    NSMutableString *report = [NSMutableString string];
-    NSUInteger visited = 0;
-    while (pending.count && visited < 400) {
-        UIView *view = pending.lastObject;
-        [pending removeLastObject];
-        visited++;
-        NSString *name = NSStringFromClass(view.class);
-        if ([name rangeOfString:@"statusbar" options:NSCaseInsensitiveSearch].location != NSNotFound) {
-            [report appendFormat:@"candidate=%@ frame=%@ hidden=%d super=%@\n",
-             name, NSStringFromCGRect(view.frame), view.hidden,
-             NSStringFromClass(view.superview.class)];
-            NSLog(@"[Lilywhite] candidate=%@ frame=%@ hidden=%d super=%@",
-                  name, NSStringFromCGRect(view.frame), view.hidden,
-                  NSStringFromClass(view.superview.class));
-        }
-        [pending addObjectsFromArray:view.subviews];
-    }
-    NSLog(@"[Lilywhite] candidate scan complete visited=%lu window=%@",
-          (unsigned long)visited, NSStringFromClass(window.class));
-    [report appendFormat:@"scan complete visited=%lu window=%@\n",
-     (unsigned long)visited, NSStringFromClass(window.class)];
-    [report writeToFile:@"/var/mobile/Library/LilywhiteStatus.txt"
-             atomically:YES encoding:NSUTF8StringEncoding error:nil];
-}
-
 static void LWInstall(void) {
     if (LWCapsule.superview) return;
 
@@ -134,9 +107,6 @@ static void LWInstall(void) {
     LWCapsule.userInteractionEnabled = NO;
     [hostWindow addSubview:LWCapsule];
     [hostWindow bringSubviewToFront:LWCapsule];
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(4.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        LWLogNativeStatusBarCandidates(hostWindow);
-    });
 }
 
 %ctor {
