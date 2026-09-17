@@ -176,7 +176,7 @@ static void LWWriteNotificationRuntimeMap(void) {
     free(classes);
     NSMutableString *output = [NSMutableString stringWithString:[[names sortedArrayUsingSelector:@selector(compare:)] componentsJoinedByString:@"\n"]];
     [output appendString:@"\n\n--- TARGET METHODS ---\n"];
-    for (NSString *className in @[@"BBServer", @"BBBulletin", @"BBBulletinRequest", @"SBBulletinLocalObserverGateway", @"SBNCNotificationDispatcher", @"NCNotificationMasterList", @"NCNotificationRequest"]) {
+    for (NSString *className in @[@"BBServer", @"BBBulletin", @"BBBulletinRequest", @"SBBulletinLocalObserverGateway", @"SBNCNotificationDispatcher", @"NCNotificationMasterList", @"NCNotificationRequest", @"SBApplicationController", @"SBApplication", @"SBApplicationIcon"]) {
         Class cls = NSClassFromString(className);
         if (!cls) continue;
         [output appendFormat:@"\n[%@]\n", className];
