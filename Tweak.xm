@@ -31,6 +31,7 @@ static __attribute__((unused)) NSInteger LWVisibleSignalLayers(CALayer *layer) {
 @property(nonatomic, strong) NSTimer *timer;
 @property(nonatomic, assign) CGFloat batteryFraction;
 @property(nonatomic, strong) NSDate *batteryPercentageVisibleUntil;
+- (void)showBatteryPercentage;
 @end
 
 @implementation LWStatusCapsule
@@ -65,7 +66,7 @@ static __attribute__((unused)) NSInteger LWVisibleSignalLayers(CALayer *layer) {
     [self.pillView addSubview:self.timeLabel];
     [self.signalDock addSubview:self.signalLabel];
     [self addSubview:self.wifiImage];
-    UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(showBatteryPercentage:)];
+    UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(handleTap:)];
     [self addGestureRecognizer:tap];
     [[UIDevice currentDevice] setBatteryMonitoringEnabled:YES];
     self.timer = [NSTimer scheduledTimerWithTimeInterval:1.0 target:self selector:@selector(updateContent) userInfo:nil repeats:YES];
@@ -111,7 +112,11 @@ static __attribute__((unused)) NSInteger LWVisibleSignalLayers(CALayer *layer) {
     return CGSizeMake(108.0, size.height);
 }
 
-- (void)showBatteryPercentage:(__unused UITapGestureRecognizer *)recognizer {
+- (void)handleTap:(__unused UITapGestureRecognizer *)recognizer {
+    [self showBatteryPercentage];
+}
+
+- (void)showBatteryPercentage {
     self.batteryPercentageVisibleUntil = [NSDate dateWithTimeIntervalSinceNow:3.0];
     [self updateContent];
 }
@@ -659,6 +664,27 @@ static __attribute__((unused)) void LWInstallIntoStatusBar(UIStatusBar *statusBa
 }
 
 - (void)layoutSubviews {
+    %orig;
+}
+%end
+
+// SBStatusBarWindow owns status-bar touch dispatch, so a recognizer installed
+// on our sibling capsule does not reliably receive touches. Observe the
+// window's native event stream and only react to an ended touch inside the
+// capsule's rendered frame.
+%hook SBStatusBarWindow
+- (void)sendEvent:(UIEvent *)event {
+    if (event.type == UIEventTypeTouches && LWCapsule && !LWCapsule.hidden) {
+        for (UITouch *touch in event.allTouches) {
+            if (touch.phase != UITouchPhaseEnded) continue;
+            CGPoint point = [touch locationInView:(UIView *)(id)self];
+            CGRect capsuleFrame = [LWCapsule convertRect:LWCapsule.bounds toView:(UIView *)(id)self];
+            if (CGRectContainsPoint(capsuleFrame, point)) {
+                [LWCapsule showBatteryPercentage];
+                break;
+            }
+        }
+    }
     %orig;
 }
 %end
