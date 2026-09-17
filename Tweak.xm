@@ -6,10 +6,9 @@ static NSString * const LWOverlayTag = @"com.user.lilywhite.overlay";
 
 @interface LWStatusCapsule : UIView
 @property(nonatomic, strong) UILabel *timeLabel;
-@property(nonatomic, strong) UILabel *networkLabel;
-@property(nonatomic, strong) UILabel *wifiLabel;
-@property(nonatomic, strong) UILabel *batteryLabel;
+@property(nonatomic, strong) UILabel *signalLabel;
 @property(nonatomic, strong) NSTimer *timer;
+@property(nonatomic, assign) CGFloat batteryFraction;
 @end
 
 @implementation LWStatusCapsule
@@ -25,18 +24,30 @@ static NSString * const LWOverlayTag = @"com.user.lilywhite.overlay";
     self.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.25].CGColor;
     self.clipsToBounds = YES;
 
-    self.timeLabel = [self labelWithFont:[UIFont monospacedDigitSystemFontOfSize:16 weight:UIFontWeightSemibold]];
-    self.networkLabel = [self labelWithFont:[UIFont systemFontOfSize:12 weight:UIFontWeightSemibold]];
-    self.wifiLabel = [self labelWithFont:[UIFont systemFontOfSize:13 weight:UIFontWeightMedium]];
-    self.batteryLabel = [self labelWithFont:[UIFont systemFontOfSize:12 weight:UIFontWeightSemibold]];
+    self.timeLabel = [self labelWithFont:[UIFont monospacedDigitSystemFontOfSize:14 weight:UIFontWeightSemibold]];
+    self.signalLabel = [self labelWithFont:[UIFont systemFontOfSize:9 weight:UIFontWeightMedium]];
     [self addSubview:self.timeLabel];
-    [self addSubview:self.networkLabel];
-    [self addSubview:self.wifiLabel];
-    [self addSubview:self.batteryLabel];
+    [self addSubview:self.signalLabel];
     [[UIDevice currentDevice] setBatteryMonitoringEnabled:YES];
     self.timer = [NSTimer scheduledTimerWithTimeInterval:1.0 target:self selector:@selector(updateContent) userInfo:nil repeats:YES];
     [self updateContent];
     return self;
+}
+
+- (void)drawRect:(CGRect)rect {
+    [super drawRect:rect];
+    CGFloat inset = 1.5;
+    CGRect outline = CGRectInset(self.bounds, inset, inset);
+    UIBezierPath *path = [UIBezierPath bezierPathWithRoundedRect:outline cornerRadius:CGRectGetHeight(outline) / 2.0];
+    [[UIColor colorWithWhite:1.0 alpha:0.92] setStroke];
+    path.lineWidth = 1.8;
+    [path stroke];
+    CGFloat progressWidth = CGRectGetWidth(outline) * MIN(1.0, MAX(0.0, self.batteryFraction));
+    if (progressWidth > 0.0) {
+        UIBezierPath *progress = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(CGRectGetMinX(outline), CGRectGetMinY(outline), progressWidth, CGRectGetHeight(outline)) cornerRadius:CGRectGetHeight(outline) / 2.0];
+        [[UIColor colorWithWhite:1.0 alpha:0.20] setFill];
+        [progress fill];
+    }
 }
 
 - (UILabel *)labelWithFont:(UIFont *)font {
@@ -51,31 +62,12 @@ static NSString * const LWOverlayTag = @"com.user.lilywhite.overlay";
 - (void)layoutSubviews {
     [super layoutSubviews];
     CGFloat h = self.bounds.size.height;
-    NSArray<UILabel *> *labels = @[self.timeLabel, self.networkLabel, self.wifiLabel, self.batteryLabel];
-    CGFloat available = MAX(8.0, self.bounds.size.width - 20.0 - 6.0 * (labels.count - 1));
-    CGFloat intrinsicTotal = 0.0;
-    NSMutableArray<NSNumber *> *intrinsicWidths = [NSMutableArray array];
-    for (UILabel *label in labels) {
-        CGFloat width = MAX(8.0, ceil([label sizeThatFits:CGSizeMake(CGFLOAT_MAX, h)].width));
-        [intrinsicWidths addObject:@(width)];
-        intrinsicTotal += width;
-    }
-    CGFloat scale = MIN(1.0, available / MAX(1.0, intrinsicTotal));
-    CGFloat x = 10.0;
-    for (NSUInteger i = 0; i < labels.count; i++) {
-        UILabel *label = labels[i];
-        CGFloat width = MAX(8.0, floor(intrinsicWidths[i].doubleValue * scale));
-        label.frame = CGRectMake(x, 0.0, width, h);
-        x += width + 6.0;
-    }
+    self.timeLabel.frame = CGRectMake(5.0, 1.0, MAX(8.0, self.bounds.size.width - 10.0), MAX(16.0, h - 9.0));
+    self.signalLabel.frame = CGRectMake(5.0, h - 10.0, MAX(8.0, self.bounds.size.width - 10.0), 9.0);
 }
 
 - (CGSize)sizeThatFits:(CGSize)size {
-    CGFloat width = 20.0;
-    for (UILabel *label in @[self.timeLabel, self.networkLabel, self.wifiLabel, self.batteryLabel]) {
-        width += ceil([label sizeThatFits:CGSizeMake(CGFLOAT_MAX, size.height)].width) + 6.0;
-    }
-    return CGSizeMake(ceil(width), size.height);
+    return CGSizeMake(82.0, size.height);
 }
 
 - (void)updateContent {
@@ -86,14 +78,12 @@ static NSString * const LWOverlayTag = @"com.user.lilywhite.overlay";
     // Do not instantiate CoreTelephony from SpringBoard. It is not needed for
     // the visual smoke test and keeps this build independent of its service
     // lifecycle during SpringBoard launch.
-    self.networkLabel.text = @"—";
-    self.wifiLabel.text = @"⌁";
+    self.signalLabel.text = @"▮▮▮ 5G";
 
     UIDevice *device = UIDevice.currentDevice;
     NSInteger percent = MAX(0, (NSInteger)round(device.batteryLevel * 100.0));
-    self.batteryLabel.text = device.batteryState == UIDeviceBatteryStateCharging
-        ? [NSString stringWithFormat:@"⚡%ld%%", (long)percent]
-        : [NSString stringWithFormat:@"▣%ld%%", (long)percent];
+    self.batteryFraction = device.batteryLevel >= 0.0 ? MIN(1.0, MAX(0.0, device.batteryLevel)) : 1.0;
+    [self setNeedsDisplay];
 }
 
 @end
@@ -137,6 +127,21 @@ static void LWHideNativeTimeItem(UIView *view, NSUInteger depth) {
     }
 }
 
+static void LWHideViewsUnderCapsule(UIView *view, UIView *host, CGRect capsuleRect, NSUInteger depth) {
+    if (!view || depth > 10 || view == (UIView *)LWCapsule) return;
+    for (UIView *child in [view.subviews copy]) {
+        if (child == (UIView *)LWCapsule) continue;
+        CGRect r = [child convertRect:child.bounds toView:host];
+        BOOL leaf = child.subviews.count <= 3;
+        if (leaf && CGRectGetWidth(r) > 0.0 && CGRectIntersectsRect(r, capsuleRect) &&
+            CGRectGetMinX(r) < CGRectGetMidX(capsuleRect)) {
+            child.hidden = YES;
+            continue;
+        }
+        LWHideViewsUnderCapsule(child, host, capsuleRect, depth + 1);
+    }
+}
+
 static void LWInstallIntoStatusBar(UIStatusBar *statusBar) {
     if (!statusBar || statusBar.bounds.size.width <= 0.0) return;
     LWStatusBar = statusBar;
@@ -165,6 +170,7 @@ static void LWInstallIntoStatusBar(UIStatusBar *statusBar) {
     CGRect barRect = [statusBar convertRect:statusBar.bounds toView:hostWindow];
     LWCapsule.frame = CGRectMake(8.0,
         CGRectGetMinY(barRect) + MAX(0.0, (CGRectGetHeight(barRect) - capsuleHeight) / 2.0), width, capsuleHeight);
+    LWHideViewsUnderCapsule(hostWindow, hostWindow, LWCapsule.frame, 0);
     [hostWindow bringSubviewToFront:LWCapsule];
 }
 
