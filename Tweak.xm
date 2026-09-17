@@ -737,37 +737,16 @@ static __attribute__((unused)) void LWInstallIntoStatusBar(UIStatusBar *statusBa
 }
 %end
 
-// SBStatusBarWindow owns status-bar touch dispatch, so a recognizer installed
-// on our sibling capsule does not reliably receive touches. Observe the
-// window's native event stream and only react to an ended touch inside the
-// capsule's rendered frame.
-%hook SBStatusBarWindow
-- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
-    if (LWCapsule && !LWCapsule.hidden && LWCapsule.superview) {
-        CGRect capsuleFrame = [LWCapsule convertRect:LWCapsule.bounds toView:(UIView *)(id)self];
-        if (CGRectContainsPoint(capsuleFrame, point)) {
-            // The system normally routes status-bar taps before the sibling
-            // capsule can participate in hit testing.  Claim only this small
-            // frame; everything else continues through the native result.
-            return LWCapsule;
-        }
-    }
-    return %orig;
-}
-
-- (void)sendEvent:(UIEvent *)event {
-    if (event.type == UIEventTypeTouches && LWCapsule && !LWCapsule.hidden) {
-        for (UITouch *touch in event.allTouches) {
-            if (touch.phase != UITouchPhaseEnded) continue;
-            CGPoint point = [touch locationInView:(UIView *)(id)self];
-            CGRect capsuleFrame = [LWCapsule convertRect:LWCapsule.bounds toView:(UIView *)(id)self];
-            if (CGRectContainsPoint(capsuleFrame, point)) {
-                [LWCapsule showBatteryPercentage];
-                break;
-            }
-        }
-    }
+// The system's STUIStatusBarActionGestureRecognizer, rather than the window
+// hit-test path, owns a status-bar tap on iOS 17. Hook its recognised state
+// and use its native location so only the Lilywhite capsule responds.
+%hook STUIStatusBarActionGestureRecognizer
+- (void)setState:(UIGestureRecognizerState)state {
     %orig;
+    if (state != UIGestureRecognizerStateEnded || !LWCapsule || LWCapsule.hidden || !LWStatusWindow) return;
+    CGPoint point = [(UIGestureRecognizer *)(id)self locationInView:LWStatusWindow];
+    CGRect capsuleFrame = [LWCapsule convertRect:LWCapsule.bounds toView:LWStatusWindow];
+    if (CGRectContainsPoint(capsuleFrame, point)) [LWCapsule showBatteryPercentage];
 }
 %end
 
