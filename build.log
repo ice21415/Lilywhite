@@ -3,12 +3,9 @@
 [1;31m> [1;3;39mMaking all for tweak Lilywhite…[m
 [0;31m==> [1;39mPreprocessing Tweak.xm…[m
 [0;32m==> [1;39mCompiling Tweak.xm (arm64e)…[m
-[1mTweak.xm:100:34: [0m[0;1;31merror: [0m[1m'windows' is deprecated: first deprecated in iOS 15.0 - Use UIWindowScene.windows on a relevant window scene instead [-Werror,-Wdeprecated-declarations][0m
-    for (UIWindow *window in app.windows) {
-[0;1;32m                                 ^
-[0m[1m/Applications/Xcode_15.4.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS17.5.sdk/System/Library/Frameworks/UIKit.framework/Headers/UIApplication.h:109:62: [0m[0;1;30mnote: [0m'windows' has been explicitly marked deprecated here[0m
-@property(nonatomic,readonly) NSArray<__kindof UIWindow *>  *windows API_DEPRECATED("Use UIWindowScene.windows on a relevant window scene instead", ios(2.0, 15.0), visionos(1.0, 1.0));
-[0;1;32m                                                             ^
+[1mTweak.xm:84:15: [0m[0;1;31merror: [0m[1munused variable 'percent' [-Werror,-Wunused-variable][0m
+    NSInteger percent = MAX(0, (NSInteger)round(device.batteryLevel * 100.0));
+[0;1;32m              ^
 [0m1 error generated.
 make[3]: *** [/Users/runner/work/Lilywhite/Lilywhite/.theos/obj/arm64e/Tweak.xm.6b7b7878.o] Error 1
 rm /Users/runner/work/Lilywhite/Lilywhite/.theos/obj/arm64e/Tweak.xm.mm
