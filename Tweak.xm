@@ -190,6 +190,13 @@ static __attribute__((unused)) BOOL LWLooksLikeClockText(NSString *text) {
     return YES;
 }
 
+static BOOL LWIsActualClockItem(UIView *item) {
+    if (!item.window || item.hidden || item.alpha <= 0.01) return NO;
+    id text = nil;
+    @try { text = [item valueForKey:@"text"]; } @catch (__unused NSException *e) {}
+    return LWLooksLikeClockText(text);
+}
+
 static __attribute__((unused)) void LWWriteRuntimeMap(void) {
     UIApplication *app = UIApplication.sharedApplication;
     NSMutableString *out = [NSMutableString stringWithFormat:@"app=%@ statusBar=%@\\n",
@@ -379,9 +386,10 @@ static __attribute__((unused)) void LWInstallIntoStatusBar(UIStatusBar *statusBa
 - (void)didMoveToWindow {
     %orig;
     UIView *item = (UIView *)(id)self;
+    // The text is commonly still nil at this point. layoutSubviews below
+    // performs the exact clock check after the system has configured it.
     if (!item.window) return;
-    CGRect screenRect = [item convertRect:item.bounds toView:item.window];
-    if (CGRectGetMinX(screenRect) >= 110.0 || CGRectGetWidth(screenRect) > 110.0) return;
+    if (!LWIsActualClockItem(item)) return;
     LWStatusCapsule *capsule = objc_getAssociatedObject(item, &LWNativeCapsuleKey);
     if (!capsule) {
         capsule = [[LWStatusCapsule alloc] initWithFrame:CGRectZero];
@@ -402,9 +410,7 @@ static __attribute__((unused)) void LWInstallIntoStatusBar(UIStatusBar *statusBa
 - (void)layoutSubviews {
     %orig;
     UIView *item = (UIView *)(id)self;
-    if (!item.window) return;
-    CGRect screenRect = [item convertRect:item.bounds toView:item.window];
-    if (CGRectGetMinX(screenRect) >= 110.0 || CGRectGetWidth(screenRect) > 110.0) return;
+    if (!LWIsActualClockItem(item)) return;
     LWStatusCapsule *capsule = objc_getAssociatedObject(item, &LWNativeCapsuleKey);
     if (!capsule) return;
     if ([item isKindOfClass:UILabel.class]) ((UILabel *)item).textColor = UIColor.clearColor;
