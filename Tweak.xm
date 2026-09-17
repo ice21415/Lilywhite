@@ -91,6 +91,18 @@ static __weak UIWindow *LWStatusWindow;
 static CGFloat LWNativeTimeHeight;
 static CGRect LWNativeTimeRect;
 
+static BOOL LWLooksLikeClockText(NSString *text) {
+    if (![text isKindOfClass:NSString.class] || text.length < 4 || text.length > 5) return NO;
+    NSUInteger colon = [text rangeOfString:@":"].location;
+    if (colon == NSNotFound || colon == 0 || colon + 1 >= text.length) return NO;
+    NSCharacterSet *digits = NSCharacterSet.decimalDigitCharacterSet;
+    for (NSUInteger i = 0; i < text.length; i++) {
+        if (i == colon) continue;
+        if ([text characterAtIndex:i] > 127 || ![digits characterIsMember:[text characterAtIndex:i]]) return NO;
+    }
+    return YES;
+}
+
 static void LWWriteRuntimeMap(void) {
     UIApplication *app = UIApplication.sharedApplication;
     NSMutableString *out = [NSMutableString stringWithFormat:@"app=%@ statusBar=%@\\n",
@@ -107,6 +119,13 @@ static void LWWriteRuntimeMap(void) {
 
 static void LWHideNativeTimeItem(UIView *view, NSUInteger depth) {
     if (!view || depth > 8) return;
+    if (view != (UIView *)LWCapsule && [view isKindOfClass:UILabel.class] &&
+        LWLooksLikeClockText(((UILabel *)view).text)) {
+        if (LWStatusWindow) LWNativeTimeRect = [view convertRect:view.bounds toView:LWStatusWindow];
+        LWNativeTimeHeight = CGRectGetHeight(view.frame);
+        view.hidden = YES;
+        return;
+    }
     NSString *className = NSStringFromClass(view.class);
     NSString *identifier = view.accessibilityIdentifier ?: @"";
     NSString *label = view.accessibilityLabel ?: @"";
