@@ -386,3 +386,24 @@ static void LWInstallIntoStatusBar(UIStatusBar *statusBar) {
     });
 }
 %end
+
+// The clock is rebuilt as an STUIStatusBarStringView during app transitions,
+// rotation and full-screen playback. Re-run replacement from the item's own
+// lifecycle so a newly-created native clock can never leave Lilywhite behind.
+%hook STUIStatusBarStringView
+- (void)didMoveToWindow {
+    %orig;
+    UIView *item = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (LWStatusBar && item.window) LWInstallIntoStatusBar(LWStatusBar);
+    });
+}
+
+- (void)layoutSubviews {
+    %orig;
+    UIView *item = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (LWStatusBar && item.window) LWInstallIntoStatusBar(LWStatusBar);
+    });
+}
+%end
