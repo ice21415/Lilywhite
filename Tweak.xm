@@ -306,6 +306,14 @@ static void LWTrackNotificationRequest(id request, BOOL removed) {
     dispatch_async(dispatch_get_main_queue(), ^{ LWRenderNotificationTray(); });
 }
 
+static void LWLoadExistingNotificationRequests(id masterList) {
+    SEL selector = NSSelectorFromString(@"_visibleNotificationRequests");
+    if (!masterList || ![masterList respondsToSelector:selector]) return;
+    id requests = [masterList performSelector:selector];
+    if (![requests conformsToProtocol:@protocol(NSFastEnumeration)]) return;
+    for (id request in requests) LWTrackNotificationRequest(request, NO);
+}
+
 static void LWRefreshNativeSignalBars(UIView *root) {
     if (!root) return;
     NSInteger detected = -1;
@@ -585,6 +593,19 @@ static __attribute__((unused)) void LWInstallIntoStatusBar(UIStatusBar *statusBa
 %end
 
 %hook NCNotificationMasterList
+- (id)init {
+    id masterList = %orig;
+    // The master list fills asynchronously after SpringBoard starts, so take
+    // two snapshots to cover the initial and fully-loaded notification state.
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        LWLoadExistingNotificationRequests(masterList);
+    });
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        LWLoadExistingNotificationRequests(masterList);
+    });
+    return masterList;
+}
+
 - (void)insertNotificationRequest:(id)request {
     %orig;
     LWTrackNotificationRequest(request, NO);
