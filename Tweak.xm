@@ -114,6 +114,23 @@ static void LWWriteRuntimeMap(void) {
             [out appendFormat:@"window=%@ frame=%@ root=%@\\n", NSStringFromClass(window.class), NSStringFromCGRect(window.frame), NSStringFromClass(window.rootViewController.class)];
         }
     }
+    __block NSUInteger count = 0;
+    __block void (^dump)(UIView *, NSUInteger);
+    dump = ^(UIView *view, NSUInteger depth) {
+        if (!view || depth > 10 || count++ > 800) return;
+        NSString *text = @"";
+        if ([view isKindOfClass:UILabel.class]) text = ((UILabel *)view).text ?: @"";
+        [out appendFormat:@"%@%@ frame=%@ text=%@ hidden=%d\\n",
+            [@"  " stringByPaddingToLength:depth * 2 withString:@" " startingAtIndex:0],
+            NSStringFromClass(view.class), NSStringFromCGRect([view convertRect:view.bounds toView:nil]), text, view.hidden];
+        for (UIView *child in [view.subviews copy]) dump(child, depth + 1);
+    };
+    for (UIScene *scene in app.connectedScenes) {
+        if (![scene isKindOfClass:UIWindowScene.class]) continue;
+        for (UIWindow *window in ((UIWindowScene *)scene).windows) dump(window, 0);
+    }
+    [[NSFileManager defaultManager] createDirectoryAtPath:@"/var/mobile/Library/Lilywhite" withIntermediateDirectories:YES attributes:nil error:nil];
+    [out writeToFile:@"/var/mobile/Library/Lilywhite/StatusRuntime.txt" atomically:YES encoding:NSUTF8StringEncoding error:nil];
     [out writeToFile:@"/var/root/LilywhiteStatusRuntime.txt" atomically:YES encoding:NSUTF8StringEncoding error:nil];
 }
 
