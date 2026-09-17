@@ -7,7 +7,7 @@
 
 static NSString * const LWOverlayTag = @"com.user.lilywhite.overlay";
 static BOOL LWHasWiFi;
-static NSString *LWCellularType;
+static NSInteger LWSignalBars = 4;
 
 @interface LWStatusCapsule : UIView
 @property(nonatomic, strong) UILabel *timeLabel;
@@ -59,9 +59,10 @@ static NSString *LWCellularType;
 - (void)layoutSubviews {
     [super layoutSubviews];
     CGFloat h = self.bounds.size.height;
-    self.timeLabel.frame = CGRectMake(10.0, 0.0, MAX(8.0, self.bounds.size.width - 40.0), h);
-    self.signalLabel.frame = CGRectMake(5.0, h - 10.0, MAX(8.0, self.bounds.size.width - 10.0), 9.0);
-    self.wifiImage.frame = CGRectMake(MAX(8.0, self.bounds.size.width - 19.0), 2.0, 13.0, 13.0);
+    CGFloat wifiOffset = self.wifiImage.hidden ? 0.0 : 12.0;
+    self.timeLabel.frame = CGRectMake(wifiOffset, 0.0, MAX(8.0, self.bounds.size.width - wifiOffset), MAX(15.0, h - 8.0));
+    self.signalLabel.frame = CGRectMake(5.0, h - 9.0, MAX(8.0, self.bounds.size.width - 10.0), 8.0);
+    self.wifiImage.frame = CGRectMake(6.0, 3.0, 13.0, 13.0);
     CGRect outline = CGRectInset(self.bounds, 1.5, 1.5);
     self.batteryOutlineLayer.frame = self.bounds;
     self.batteryOutlineLayer.path = [UIBezierPath bezierPathWithRoundedRect:outline cornerRadius:CGRectGetHeight(outline) / 2.0].CGPath;
@@ -83,7 +84,9 @@ static NSString *LWCellularType;
     // Do not instantiate CoreTelephony from SpringBoard. It is not needed for
     // the visual smoke test and keeps this build independent of its service
     // lifecycle during SpringBoard launch.
-    self.signalLabel.text = LWCellularType ?: @"LTE";
+    NSMutableString *dots = [NSMutableString string];
+    for (NSInteger i = 0; i < 4; i++) [dots appendString:(i < LWSignalBars ? @"●" : @"○")];
+    self.signalLabel.text = dots;
     self.wifiImage.hidden = !LWHasWiFi;
 
     UIDevice *device = UIDevice.currentDevice;
@@ -192,10 +195,16 @@ static void LWHideNativeTimeItem(UIView *view, NSUInteger depth) {
     NSString *label = view.accessibilityLabel ?: @"";
     NSString *haystack = [NSString stringWithFormat:@"%@ %@ %@", className, identifier, label].lowercaseString;
     if ([haystack containsString:@"wifi"] || [haystack containsString:@"wireless"]) LWHasWiFi = YES;
-    if ([className containsString:@"STUIStatusBarStringView"] && CGRectGetMinX(view.frame) > 250.0) {
-        NSString *value = nil;
-        @try { value = [view valueForKey:@"text"]; } @catch (__unused NSException *e) {}
-        if ([value isKindOfClass:NSString.class] && value.length > 0 && value.length < 8 && ![value isEqualToString:@"VPN"]) LWCellularType = value;
+    if ([className containsString:@"STUIStatusBarCellularSignalView"]) {
+        for (NSString *key in @[@"signalStrength", @"strength", @"level", @"numberOfBars"]) {
+            @try {
+                id value = [view valueForKey:key];
+                if ([value respondsToSelector:@selector(integerValue)]) {
+                    NSInteger n = [value integerValue];
+                    if (n >= 0 && n <= 4) { LWSignalBars = n; break; }
+                }
+            } @catch (__unused NSException *e) {}
+        }
     }
     BOOL nativeLeftString = [className containsString:@"STUIStatusBarStringView"] &&
         CGRectGetMinX(view.frame) < 100.0 && CGRectGetWidth(view.frame) <= 100.0;
@@ -240,7 +249,7 @@ static void LWInstallIntoStatusBar(UIStatusBar *statusBar) {
     LWNativeTimeHeight = 0.0;
     LWNativeTimeRect = CGRectZero;
     LWHasWiFi = NO;
-    LWCellularType = nil;
+    LWSignalBars = 4;
     LWHideNativeTimeItem(hostWindow, 0);
     CGFloat height = statusBar.bounds.size.height;
     // Reuse the native time item's complete geometry. This is the only
