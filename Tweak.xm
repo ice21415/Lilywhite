@@ -435,6 +435,29 @@ static void LWRenderNotificationTray(void) {
     [host bringSubviewToFront:LWNotificationTray];
 }
 
+static NSTimeInterval LWNotificationTimestamp(id request) {
+    id bulletin = LWKVC(request, @"bulletin");
+    for (NSString *key in @[@"date", @"publicationDate", @"lastInterruptDate", @"timestamp"]) {
+        id value = LWKVC(bulletin, key) ?: LWKVC(request, key);
+        if ([value isKindOfClass:NSDate.class]) return [(NSDate *)value timeIntervalSince1970];
+        if ([value respondsToSelector:@selector(doubleValue)]) {
+            NSTimeInterval timestamp = [value doubleValue];
+            if (timestamp > 0.0) return timestamp;
+        }
+    }
+    return 0.0;
+}
+
+static void LWSortNotificationSectionsByLatestTimestamp(void) {
+    [LWNotificationOrder sortUsingComparator:^NSComparisonResult(NSString *left, NSString *right) {
+        NSTimeInterval leftTime = [LWNotificationRequests[left][@"timestamp"] doubleValue];
+        NSTimeInterval rightTime = [LWNotificationRequests[right][@"timestamp"] doubleValue];
+        if (leftTime > rightTime) return NSOrderedAscending;
+        if (leftTime < rightTime) return NSOrderedDescending;
+        return NSOrderedSame;
+    }];
+}
+
 static void LWTrackNotificationRequest(id request, BOOL removed) {
     if (!request) return;
     if (!LWNotificationRequests) LWNotificationRequests = [NSMutableDictionary dictionary];
@@ -449,9 +472,15 @@ static void LWTrackNotificationRequest(id request, BOOL removed) {
         id icon = LWKVC(bulletin, @"sectionIcon") ?: LWKVC(bulletin, @"icon");
         if (![icon isKindOfClass:UIImage.class]) icon = LWApplicationIconForNotification(bulletin, section);
         if (![icon isKindOfClass:UIImage.class]) return;
-        LWNotificationRequests[section] = @{ @"image": icon };
-        [LWNotificationOrder removeObject:section];
-        [LWNotificationOrder insertObject:section atIndex:0];
+        NSTimeInterval timestamp = LWNotificationTimestamp(request);
+        NSTimeInterval existingTimestamp = [LWNotificationRequests[section][@"timestamp"] doubleValue];
+        // A section may contain several requests. Keep its most recent one,
+        // rather than allowing a later scan of an older request to move it.
+        if (!LWNotificationRequests[section] || timestamp >= existingTimestamp) {
+            LWNotificationRequests[section] = @{ @"image": icon, @"timestamp": @(timestamp) };
+        }
+        if (![LWNotificationOrder containsObject:section]) [LWNotificationOrder addObject:section];
+        LWSortNotificationSectionsByLatestTimestamp();
     }
     dispatch_async(dispatch_get_main_queue(), ^{ LWRenderNotificationTray(); });
 }
