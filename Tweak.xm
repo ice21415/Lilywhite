@@ -90,6 +90,7 @@ static NSString * const LWOverlayTag = @"com.user.lilywhite.overlay";
 
 static LWStatusCapsule *LWCapsule;
 static __weak UIStatusBar *LWStatusBar;
+static __weak UIWindow *LWStatusWindow;
 static CGFloat LWNativeTimeHeight;
 
 static void LWWriteRuntimeMap(void) {
@@ -129,6 +130,9 @@ static void LWHideNativeTimeItem(UIView *view, NSUInteger depth) {
 static void LWInstallIntoStatusBar(UIStatusBar *statusBar) {
     if (!statusBar || statusBar.bounds.size.width <= 0.0) return;
     LWStatusBar = statusBar;
+    UIWindow *hostWindow = statusBar.window;
+    if (!hostWindow) return;
+    LWStatusWindow = hostWindow;
     LWNativeTimeHeight = 0.0;
     LWHideNativeTimeItem(statusBar, 0);
     CGFloat height = statusBar.bounds.size.height;
@@ -137,17 +141,21 @@ static void LWInstallIntoStatusBar(UIStatusBar *statusBar) {
     CGFloat capsuleHeight = LWNativeTimeHeight > 0.0
         ? MIN(24.0, MAX(18.0, LWNativeTimeHeight))
         : MIN(24.0, MAX(18.0, height - 30.0));
-    if (LWCapsule.superview != statusBar) {
+    if (LWCapsule.superview != hostWindow) {
         [LWCapsule removeFromSuperview];
         LWCapsule = [[LWStatusCapsule alloc] initWithFrame:CGRectZero];
         LWCapsule.accessibilityIdentifier = LWOverlayTag;
         LWCapsule.userInteractionEnabled = NO;
-        [statusBar addSubview:LWCapsule];
+        [hostWindow addSubview:LWCapsule];
     }
     CGSize fittingSize = [LWCapsule sizeThatFits:CGSizeMake(statusBar.bounds.size.width, capsuleHeight)];
-    CGFloat width = MIN(fittingSize.width, MAX(120.0, statusBar.bounds.size.width - 16.0));
-    LWCapsule.frame = CGRectMake(8.0, MAX(0.0, (height - capsuleHeight) / 2.0), width, capsuleHeight);
-    [statusBar bringSubviewToFront:LWCapsule];
+    // Keep the replacement entirely in the left segment before the notch.
+    CGFloat leftSegment = MIN(145.0, hostWindow.bounds.size.width * 0.30);
+    CGFloat width = MIN(fittingSize.width, MAX(96.0, leftSegment - 8.0));
+    CGRect barRect = [statusBar convertRect:statusBar.bounds toView:hostWindow];
+    LWCapsule.frame = CGRectMake(8.0,
+        CGRectGetMinY(barRect) + MAX(0.0, (CGRectGetHeight(barRect) - capsuleHeight) / 2.0), width, capsuleHeight);
+    [hostWindow bringSubviewToFront:LWCapsule];
 }
 
 %ctor {
