@@ -81,7 +81,6 @@ static NSString * const LWOverlayTag = @"com.user.lilywhite.overlay";
     self.signalLabel.text = @"▮▮▮ 5G";
 
     UIDevice *device = UIDevice.currentDevice;
-    NSInteger percent = MAX(0, (NSInteger)round(device.batteryLevel * 100.0));
     self.batteryFraction = device.batteryLevel >= 0.0 ? MIN(1.0, MAX(0.0, device.batteryLevel)) : 1.0;
     [self setNeedsDisplay];
 }
