@@ -28,7 +28,7 @@ static NSString * const LWOverlayTag = @"com.user.lilywhite.overlay";
     self.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.25].CGColor;
     self.clipsToBounds = YES;
 
-    self.timeLabel = [self labelWithFont:[UIFont monospacedDigitSystemFontOfSize:16 weight:UIFontWeightSemibold]];
+    self.timeLabel = [self labelWithFont:[UIFont monospacedDigitSystemFontOfSize:12 weight:UIFontWeightSemibold]];
     self.signalLabel = [self labelWithFont:[UIFont systemFontOfSize:9 weight:UIFontWeightMedium]];
     self.wifiImage = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"wifi"]];
     self.wifiImage.tintColor = UIColor.whiteColor;
@@ -63,8 +63,8 @@ static NSString * const LWOverlayTag = @"com.user.lilywhite.overlay";
 - (void)layoutSubviews {
     [super layoutSubviews];
     CGFloat h = self.bounds.size.height;
-    self.timeLabel.frame = CGRectMake(11.0, 0.0, MAX(8.0, self.bounds.size.width - 43.0), h);
-    self.wifiImage.frame = CGRectMake(MAX(8.0, self.bounds.size.width - 31.0), 8.0, 18.0, 18.0);
+    self.timeLabel.frame = CGRectMake(5.0, 0.0, MAX(8.0, self.bounds.size.width - 25.0), h);
+    self.wifiImage.frame = CGRectMake(MAX(8.0, self.bounds.size.width - 18.0), 3.0, 13.0, 13.0);
 }
 
 - (CGSize)sizeThatFits:(CGSize)size {
@@ -185,9 +185,11 @@ static void LWHideNativeTimeItem(UIView *view, NSUInteger depth) {
     NSString *identifier = view.accessibilityIdentifier ?: @"";
     NSString *label = view.accessibilityLabel ?: @"";
     NSString *haystack = [NSString stringWithFormat:@"%@ %@ %@", className, identifier, label].lowercaseString;
+    BOOL nativeLeftString = [className containsString:@"STUIStatusBarStringView"] &&
+        CGRectGetMinX(view.frame) < 100.0 && CGRectGetWidth(view.frame) <= 100.0;
     // iOS 17 uses private UIStatusBar*Time* item views. Do not hide a broad
     // container; only hide a reasonably small leaf that identifies as time.
-    if ([haystack containsString:@"time"] && view != (UIView *)LWStatusBar &&
+    if (([haystack containsString:@"time"] || nativeLeftString) && view != (UIView *)LWStatusBar &&
         view.bounds.size.width > 0.0 && view.bounds.size.width <= 110.0 &&
         view.subviews.count <= 3) {
         LWNativeTimeHeight = MAX(LWNativeTimeHeight, CGRectGetHeight(view.frame));
