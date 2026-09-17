@@ -1,7 +1,1 @@
-{
-    Filter = {
-    // UIStatusBar is owned by each foreground application on iOS 17.
-    // Inject into all UIKit clients so the replacement survives app switches.
-    Bundles = ("*");
-};
-}
+{}
