@@ -143,6 +143,7 @@ static __weak UIStatusBar *LWStatusBar;
 static __weak UIWindow *LWStatusWindow;
 static CGFloat LWNativeTimeHeight;
 static CGRect LWNativeTimeRect;
+static __weak UIView *LWNativeTimeView;
 static NSString *LWRuntimeMap;
 
 static void LWStartRuntimeSocket(void) {
@@ -224,8 +225,10 @@ static void LWWriteRuntimeMap(void) {
 
 static void LWHideNativeTimeItem(UIView *view, NSUInteger depth) {
     if (!view || depth > 8) return;
+    if (view == (UIView *)LWCapsule) return;
     if (view != (UIView *)LWCapsule && [view isKindOfClass:UILabel.class] &&
         LWLooksLikeClockText(((UILabel *)view).text)) {
+        LWNativeTimeView = view;
         if (LWStatusWindow) LWNativeTimeRect = [view convertRect:view.bounds toView:LWStatusWindow];
         LWNativeTimeHeight = CGRectGetHeight(view.frame);
         view.hidden = YES;
@@ -267,6 +270,7 @@ static void LWHideNativeTimeItem(UIView *view, NSUInteger depth) {
         view.bounds.size.width > 0.0 && view.bounds.size.width <= 110.0 &&
         view.subviews.count <= 3) {
         LWNativeTimeHeight = MAX(LWNativeTimeHeight, CGRectGetHeight(view.frame));
+        LWNativeTimeView = view;
         if (LWStatusWindow) {
             LWNativeTimeRect = [view convertRect:view.bounds toView:LWStatusWindow];
         }
@@ -301,9 +305,12 @@ static void LWInstallIntoStatusBar(UIStatusBar *statusBar) {
     LWStatusWindow = hostWindow;
     LWNativeTimeHeight = 0.0;
     LWNativeTimeRect = CGRectZero;
+    LWNativeTimeView = nil;
     LWHasWiFi = NO;
     LWSignalBars = 4;
     LWHideNativeTimeItem(hostWindow, 0);
+    UIView *nativeView = LWNativeTimeView;
+    UIView *host = nativeView.superview ?: (UIView *)hostWindow;
     CGFloat height = statusBar.bounds.size.height;
     // Reuse the native time item's complete geometry. This is the only
     // device-specific measurement that is guaranteed to stay outside the
@@ -315,30 +322,28 @@ static void LWInstallIntoStatusBar(UIStatusBar *statusBar) {
     CGFloat capsuleHeight = hasNativeGeometry
         ? MIN(28.0, MAX(24.0, height - 22.0))
         : MIN(26.0, MAX(22.0, height - 28.0));
-    if (LWCapsule.superview != hostWindow) {
+    if (LWCapsule.superview != host) {
         [LWCapsule removeFromSuperview];
         LWCapsule = [[LWStatusCapsule alloc] initWithFrame:CGRectZero];
         LWCapsule.accessibilityIdentifier = LWOverlayTag;
         LWCapsule.userInteractionEnabled = NO;
-        [hostWindow addSubview:LWCapsule];
+        [host addSubview:LWCapsule];
     }
     CGSize fittingSize = [LWCapsule sizeThatFits:CGSizeMake(statusBar.bounds.size.width, capsuleHeight)];
     // Keep the replacement entirely in the left segment before the notch.
     // Use the measured native time item's right edge as the real left-region
     // boundary. The extra 32pt is only the space needed for the Wi-Fi glyph.
-    CGRect barRect = [statusBar convertRect:statusBar.bounds toView:hostWindow];
-    CGFloat originX = hasNativeGeometry ? CGRectGetMinX(LWNativeTimeRect) : 8.0;
-    CGFloat originY = hasNativeGeometry ? CGRectGetMinY(barRect) + (CGRectGetHeight(barRect) - capsuleHeight) / 2.0 : 18.0;
+    CGFloat originX = nativeView ? CGRectGetMinX(nativeView.frame) : 8.0;
+    CGFloat originY = nativeView ? MAX(0.0, CGRectGetMinY(nativeView.frame) - 3.0) : 18.0;
     CGFloat width = hasNativeGeometry
-        ? MIN(fittingSize.width, CGRectGetWidth(LWNativeTimeRect) + 4.0)
+        ? MIN(fittingSize.width, CGRectGetWidth(nativeView.frame) + 4.0)
         : MIN(fittingSize.width, hostWindow.bounds.size.width * 0.27);
     if (!hasNativeGeometry) {
-        originY = CGRectGetMinY(barRect) + MAX(0.0, (CGRectGetHeight(barRect) - capsuleHeight) / 2.0);
+        originY = 18.0;
     }
     LWCapsule.frame = CGRectMake(originX, originY, width, capsuleHeight);
     [LWCapsule updateContent];
-    LWHideViewsUnderCapsule(hostWindow, hostWindow, LWCapsule.frame, 0);
-    [hostWindow bringSubviewToFront:LWCapsule];
+    [host bringSubviewToFront:LWCapsule];
 }
 
 %ctor {
