@@ -137,6 +137,8 @@ static void LWWriteRuntimeMap(void) {
     [out writeToFile:@"/var/root/LilywhiteStatusRuntime.txt" atomically:YES encoding:NSUTF8StringEncoding error:nil];
     [out writeToFile:@"/var/jb/tmp/LilywhiteStatusRuntime.txt" atomically:YES encoding:NSUTF8StringEncoding error:nil];
     [out writeToFile:@"/var/tmp/LilywhiteStatusRuntime.txt" atomically:YES encoding:NSUTF8StringEncoding error:nil];
+    [[NSUserDefaults standardUserDefaults] setObject:out forKey:@"LilywhiteStatusRuntime"];
+    [[NSUserDefaults standardUserDefaults] synchronize];
 }
 
 static void LWHideNativeTimeItem(UIView *view, NSUInteger depth) {
