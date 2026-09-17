@@ -133,9 +133,11 @@ static NSString *LWRuntimeMap;
 static char LWNativeCapsuleKey;
 static BOOL LWNotificationMapCaptured;
 static UIView *LWNotificationTray;
+static __weak UIView *LWNativeRightAnchor;
 static NSMutableDictionary<NSString *, NSDictionary *> *LWNotificationRequests;
 static NSMutableArray<NSString *> *LWNotificationOrder;
 static NSMutableDictionary<NSString *, UIImage *> *LWNotificationIconCache;
+static char LWNativeRightHiddenKey;
 
 static __attribute__((unused)) BOOL LWIsSpringBoardProcess(void) {
     return [NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.apple.springboard"];
@@ -258,36 +260,54 @@ static UIImage *LWApplicationIconForNotification(id bulletin, NSString *section)
     return nil;
 }
 
-static void LWHideNativeRightStatusItems(UIView *view, UIWindow *window) {
+static void LWSetNativeRightStatusItemsHidden(UIView *view, UIWindow *window, BOOL hidden) {
     for (UIView *child in view.subviews) {
         NSString *name = NSStringFromClass(child.class);
         CGRect screenRect = [child convertRect:child.bounds toView:window];
         BOOL isRight = CGRectGetMidX(screenRect) > window.bounds.size.width * 0.72;
         BOOL isSystemIndicator = [name containsString:@"Cellular"] || [name containsString:@"Battery"] ||
             [name containsString:@"Wifi"] || [name containsString:@"WiFi"];
-        if (isRight && isSystemIndicator) child.hidden = YES;
-        LWHideNativeRightStatusItems(child, window);
+        if (isRight && isSystemIndicator) {
+            if (hidden) {
+                objc_setAssociatedObject(child, &LWNativeRightHiddenKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                child.hidden = YES;
+            } else if ([objc_getAssociatedObject(child, &LWNativeRightHiddenKey) boolValue]) {
+                child.hidden = NO;
+                objc_setAssociatedObject(child, &LWNativeRightHiddenKey, nil, OBJC_ASSOCIATION_ASSIGN);
+            }
+        }
+        LWSetNativeRightStatusItemsHidden(child, window, hidden);
     }
 }
 
 static void LWRenderNotificationTray(void) {
+    NSArray<NSString *> *sections = [LWNotificationOrder subarrayWithRange:NSMakeRange(0, MIN(3, LWNotificationOrder.count))];
     UIWindow *window = LWStatusWindow;
-    if (!window) return;
+    UIView *anchor = LWNativeRightAnchor;
+    UIView *host = anchor.superview;
+    if (!window || !host) return;
+    if (!sections.count) {
+        LWNotificationTray.hidden = YES;
+        LWSetNativeRightStatusItemsHidden(host, window, NO);
+        return;
+    }
     if (!LWNotificationTray) {
         LWNotificationTray = [[UIView alloc] initWithFrame:CGRectZero];
         LWNotificationTray.userInteractionEnabled = NO;
-        [window addSubview:LWNotificationTray];
     }
-    NSArray<NSString *> *sections = [LWNotificationOrder subarrayWithRange:NSMakeRange(0, MIN(3, LWNotificationOrder.count))];
+    if (LWNotificationTray.superview != host) {
+        [LWNotificationTray removeFromSuperview];
+        [host addSubview:LWNotificationTray];
+    }
     for (UIView *subview in LWNotificationTray.subviews) [subview removeFromSuperview];
-    if (!sections.count) {
-        LWNotificationTray.hidden = YES;
-        return;
-    }
     CGFloat iconSize = 16.0;
     CGFloat spacing = 4.0;
     CGFloat width = sections.count * iconSize + (sections.count - 1) * spacing;
-    LWNotificationTray.frame = CGRectMake(window.bounds.size.width - width - 10.0, 18.0, width, iconSize);
+    CGRect anchorFrame = [anchor convertRect:anchor.bounds toView:host];
+    CGFloat rightInset = MAX(8.0, host.bounds.size.width - CGRectGetMaxX(anchorFrame));
+    LWNotificationTray.frame = CGRectMake(host.bounds.size.width - width - rightInset,
+                                          CGRectGetMidY(anchorFrame) - iconSize / 2.0,
+                                          width, iconSize);
     LWNotificationTray.hidden = NO;
     for (NSUInteger i = 0; i < sections.count; i++) {
         NSDictionary *entry = LWNotificationRequests[sections[i]];
@@ -299,8 +319,8 @@ static void LWRenderNotificationTray(void) {
         imageView.clipsToBounds = YES;
         [LWNotificationTray addSubview:imageView];
     }
-    LWHideNativeRightStatusItems(window, window);
-    [window bringSubviewToFront:LWNotificationTray];
+    LWSetNativeRightStatusItemsHidden(host, window, YES);
+    [host bringSubviewToFront:LWNotificationTray];
 }
 
 static void LWTrackNotificationRequest(id request, BOOL removed) {
@@ -620,6 +640,31 @@ static __attribute__((unused)) void LWInstallIntoStatusBar(UIStatusBar *statusBa
 
 - (void)layoutSubviews {
     %orig;
+}
+%end
+
+// Use the native cellular item only as a layout anchor.  The notification
+// tray becomes its sibling in the same STUI foreground hierarchy, exactly as
+// the left capsule is a sibling of the native clock item.
+static void LWUpdateNativeRightAnchor(UIView *item) {
+    UIWindow *window = item.window;
+    if (!window || item.hidden) return;
+    CGRect screenFrame = [item convertRect:item.bounds toView:window];
+    if (CGRectGetMidX(screenFrame) < window.bounds.size.width * 0.72) return;
+    LWStatusWindow = window;
+    LWNativeRightAnchor = item;
+    LWRenderNotificationTray();
+}
+
+%hook STUIStatusBarCellularSignalView
+- (void)didMoveToWindow {
+    %orig;
+    LWUpdateNativeRightAnchor((UIView *)(id)self);
+}
+
+- (void)layoutSubviews {
+    %orig;
+    LWUpdateNativeRightAnchor((UIView *)(id)self);
 }
 %end
 
