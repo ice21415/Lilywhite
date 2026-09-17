@@ -160,7 +160,6 @@ static __attribute__((unused)) BOOL LWIsSpringBoardProcess(void) {
 }
 
 static void LWWriteNotificationRuntimeMap(void) {
-    if (!LWIsSpringBoardProcess()) return;
     int count = objc_getClassList(NULL, 0);
     Class __unsafe_unretained *classes = (Class __unsafe_unretained *)calloc((size_t)count, sizeof(Class));
     count = objc_getClassList(classes, count);
@@ -175,8 +174,7 @@ static void LWWriteNotificationRuntimeMap(void) {
     }
     free(classes);
     NSString *output = [[names sortedArrayUsingSelector:@selector(compare:)] componentsJoinedByString:@"\n"];
-    [output writeToFile:@"/var/mobile/Library/Lilywhite/NotificationRuntime.txt" atomically:YES encoding:NSUTF8StringEncoding error:nil];
-    [output writeToFile:@"/var/root/LilywhiteNotificationRuntime.txt" atomically:YES encoding:NSUTF8StringEncoding error:nil];
+    [output writeToFile:@"/var/mobile/Library/Preferences/LilywhiteNotificationRuntime.txt" atomically:YES encoding:NSUTF8StringEncoding error:nil];
 }
 
 static __attribute__((unused)) void LWStartRuntimeSocket(void) {
@@ -424,11 +422,9 @@ static __attribute__((unused)) void LWInstallIntoStatusBar(UIStatusBar *statusBa
 %ctor {
     // Native-item hooks below own installation. Do not create a window-level
     // overlay here: that was the source of the previous lifecycle mismatch.
-    if (LWIsSpringBoardProcess()) {
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            LWWriteNotificationRuntimeMap();
-        });
-    }
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        LWWriteNotificationRuntimeMap();
+    });
 }
 
 %hook UIStatusBar
