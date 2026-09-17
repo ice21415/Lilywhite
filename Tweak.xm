@@ -9,10 +9,22 @@ static NSString * const LWOverlayTag = @"com.user.lilywhite.overlay";
 static BOOL LWHasWiFi;
 static NSInteger LWSignalBars = 4;
 
+static NSInteger LWVisibleSignalLayers(CALayer *layer) {
+    NSInteger count = 0;
+    for (CALayer *child in layer.sublayers ?: @[]) {
+        if (!child.hidden && child.opacity > 0.01 && child.bounds.size.width > 1.0 && child.bounds.size.height > 1.0) {
+            count++;
+        }
+    }
+    return MIN(4, count);
+}
+
 @interface LWStatusCapsule : UIView
 @property(nonatomic, strong) UILabel *timeLabel;
 @property(nonatomic, strong) UILabel *signalLabel;
 @property(nonatomic, strong) UIImageView *wifiImage;
+@property(nonatomic, strong) UIView *pillView;
+@property(nonatomic, strong) UIView *signalDock;
 @property(nonatomic, strong) CAShapeLayer *batteryOutlineLayer;
 @property(nonatomic, strong) NSTimer *timer;
 @property(nonatomic, assign) CGFloat batteryFraction;
@@ -24,22 +36,30 @@ static NSInteger LWSignalBars = 4;
     self = [super initWithFrame:frame];
     if (!self) return nil;
     self.tag = 17012;
-    self.backgroundColor = [UIColor colorWithWhite:0.10 alpha:0.86];
-    self.layer.cornerRadius = 18.0;
-    self.layer.cornerCurve = kCACornerCurveContinuous;
-    self.clipsToBounds = YES;
+    self.backgroundColor = UIColor.clearColor;
+    self.clipsToBounds = NO;
+    self.pillView = [[UIView alloc] initWithFrame:CGRectZero];
+    self.pillView.backgroundColor = [UIColor colorWithWhite:0.10 alpha:0.86];
+    self.pillView.layer.cornerCurve = kCACornerCurveContinuous;
+    self.pillView.userInteractionEnabled = NO;
+    [self addSubview:self.pillView];
 
     self.timeLabel = [self labelWithFont:[UIFont monospacedDigitSystemFontOfSize:13 weight:UIFontWeightSemibold]];
     self.signalLabel = [self labelWithFont:[UIFont systemFontOfSize:9 weight:UIFontWeightMedium]];
     self.wifiImage = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"wifi"]];
     self.wifiImage.tintColor = UIColor.whiteColor;
     self.wifiImage.contentMode = UIViewContentModeScaleAspectFit;
+    self.signalDock = [[UIView alloc] initWithFrame:CGRectZero];
+    self.signalDock.backgroundColor = [UIColor colorWithWhite:0.10 alpha:0.96];
+    self.signalDock.layer.cornerCurve = kCACornerCurveContinuous;
+    self.signalDock.userInteractionEnabled = NO;
+    [self addSubview:self.signalDock];
     self.batteryOutlineLayer = [CAShapeLayer layer];
     self.batteryOutlineLayer.fillColor = UIColor.clearColor.CGColor;
     self.batteryOutlineLayer.lineWidth = 1.8;
     [self.layer addSublayer:self.batteryOutlineLayer];
-    [self addSubview:self.timeLabel];
-    [self addSubview:self.signalLabel];
+    [self.pillView addSubview:self.timeLabel];
+    [self.signalDock addSubview:self.signalLabel];
     [self addSubview:self.wifiImage];
     [[UIDevice currentDevice] setBatteryMonitoringEnabled:YES];
     self.timer = [NSTimer scheduledTimerWithTimeInterval:1.0 target:self selector:@selector(updateContent) userInfo:nil repeats:YES];
@@ -59,12 +79,17 @@ static NSInteger LWSignalBars = 4;
 - (void)layoutSubviews {
     [super layoutSubviews];
     CGFloat h = self.bounds.size.height;
+    CGFloat pillHeight = MIN(24.0, h - 8.0);
+    self.pillView.frame = CGRectMake(0.0, 0.0, self.bounds.size.width, pillHeight);
+    self.pillView.layer.cornerRadius = pillHeight / 2.0;
+    self.signalDock.frame = CGRectMake(MAX(0.0, (self.bounds.size.width - 30.0) / 2.0), pillHeight - 1.0, MIN(30.0, self.bounds.size.width), 12.0);
+    self.signalDock.layer.cornerRadius = 6.0;
     CGFloat wifiOffset = self.wifiImage.hidden ? 0.0 : 12.0;
-    self.timeLabel.frame = CGRectMake(wifiOffset, 0.0, MAX(8.0, self.bounds.size.width - wifiOffset), MAX(15.0, h - 8.0));
-    self.signalLabel.frame = CGRectMake(5.0, h - 9.0, MAX(8.0, self.bounds.size.width - 10.0), 8.0);
+    self.timeLabel.frame = CGRectMake(wifiOffset, 0.0, MAX(8.0, self.bounds.size.width - wifiOffset), pillHeight);
+    self.signalLabel.frame = self.signalDock.bounds;
     self.wifiImage.frame = CGRectMake(6.0, 3.0, 13.0, 13.0);
-    CGRect outline = CGRectInset(self.bounds, 1.5, 1.5);
-    self.batteryOutlineLayer.frame = self.bounds;
+    CGRect outline = CGRectInset(self.pillView.bounds, 1.5, 1.5);
+    self.batteryOutlineLayer.frame = self.pillView.bounds;
     self.batteryOutlineLayer.path = [UIBezierPath bezierPathWithRoundedRect:outline cornerRadius:CGRectGetHeight(outline) / 2.0].CGPath;
     self.batteryOutlineLayer.strokeEnd = MIN(1.0, MAX(0.04, self.batteryFraction));
     BOOL charging = UIDevice.currentDevice.batteryState == UIDeviceBatteryStateCharging;
@@ -196,14 +221,20 @@ static void LWHideNativeTimeItem(UIView *view, NSUInteger depth) {
     NSString *haystack = [NSString stringWithFormat:@"%@ %@ %@", className, identifier, label].lowercaseString;
     if ([haystack containsString:@"wifi"] || [haystack containsString:@"wireless"]) LWHasWiFi = YES;
     if ([className containsString:@"STUIStatusBarCellularSignalView"]) {
-        for (NSString *key in @[@"signalStrength", @"strength", @"level", @"numberOfBars"]) {
+        for (NSString *key in @[@"signalStrength", @"strength", @"level", @"numberOfBars", @"signalBars", @"displayedBars", @"currentSignalStrength", @"_numberOfBars"]) {
             @try {
                 id value = [view valueForKey:key];
                 if ([value respondsToSelector:@selector(integerValue)]) {
                     NSInteger n = [value integerValue];
                     if (n >= 0 && n <= 4) { LWSignalBars = n; break; }
-                }
+                } 
             } @catch (__unused NSException *e) {}
+        }
+        // Some iOS versions expose no KVC property. Their native signal view
+        // still creates one visible layer per bar, which is a reliable fallback.
+        if (LWSignalBars == 4) {
+            NSInteger layers = LWVisibleSignalLayers(view.layer);
+            if (layers > 0) LWSignalBars = layers;
         }
     }
     BOOL nativeLeftString = [className containsString:@"STUIStatusBarStringView"] &&
@@ -257,9 +288,11 @@ static void LWInstallIntoStatusBar(UIStatusBar *statusBar) {
     // notch on every iPhone size.
     BOOL hasNativeGeometry = !CGRectIsEmpty(LWNativeTimeRect) &&
         CGRectGetWidth(LWNativeTimeRect) > 0.0 && CGRectGetHeight(LWNativeTimeRect) > 0.0;
+    // Reserve a small lower dock for the signal-hole without changing the
+    // measured native left segment width.
     CGFloat capsuleHeight = hasNativeGeometry
-        ? MIN(30.0, MAX(24.0, height - 20.0))
-        : MIN(24.0, MAX(18.0, height - 30.0));
+        ? MIN(38.0, MAX(34.0, height - 10.0))
+        : MIN(34.0, MAX(28.0, height - 20.0));
     if (LWCapsule.superview != hostWindow) {
         [LWCapsule removeFromSuperview];
         LWCapsule = [[LWStatusCapsule alloc] initWithFrame:CGRectZero];
