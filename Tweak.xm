@@ -45,8 +45,8 @@ static __attribute__((unused)) NSInteger LWVisibleSignalLayers(CALayer *layer) {
     self.pillView.userInteractionEnabled = NO;
     [self addSubview:self.pillView];
 
-    self.timeLabel = [self labelWithFont:[UIFont monospacedDigitSystemFontOfSize:15 weight:UIFontWeightSemibold]];
-    self.signalLabel = [self labelWithFont:[UIFont systemFontOfSize:6.5 weight:UIFontWeightSemibold]];
+    self.timeLabel = [self labelWithFont:[UIFont monospacedDigitSystemFontOfSize:13 weight:UIFontWeightSemibold]];
+    self.signalLabel = [self labelWithFont:[UIFont systemFontOfSize:6 weight:UIFontWeightSemibold]];
     self.wifiImage = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"wifi"]];
     self.wifiImage.tintColor = UIColor.whiteColor;
     self.wifiImage.contentMode = UIViewContentModeScaleAspectFit;
@@ -85,10 +85,10 @@ static __attribute__((unused)) NSInteger LWVisibleSignalLayers(CALayer *layer) {
     CGFloat pillHeight = h;
     self.pillView.frame = self.bounds;
     self.pillView.layer.cornerRadius = pillHeight / 2.0;
-    CGFloat dockWidth = MIN(28.0, self.bounds.size.width - 8.0);
+    CGFloat dockWidth = MIN(20.0, self.bounds.size.width - 8.0);
     self.signalDock.frame = CGRectMake(MAX(4.0, (self.bounds.size.width - dockWidth) / 2.0),
-                                       MAX(0.0, pillHeight - 10.0), dockWidth, 10.0);
-    self.signalDock.layer.cornerRadius = 5.5;
+                                       MAX(0.0, pillHeight - 8.0), dockWidth, 8.0);
+    self.signalDock.layer.cornerRadius = 4.0;
     CGFloat wifiOffset = self.wifiImage.hidden ? 0.0 : 12.0;
     self.timeLabel.frame = CGRectMake(wifiOffset, 0.0, MAX(8.0, self.bounds.size.width - wifiOffset), MAX(20.0, pillHeight - 7.0));
     self.signalLabel.frame = self.signalDock.bounds;
@@ -102,10 +102,10 @@ static __attribute__((unused)) NSInteger LWVisibleSignalLayers(CALayer *layer) {
     mask.frame = self.pillView.bounds;
     mask.fillRule = kCAFillRuleEvenOdd;
     UIBezierPath *maskPath = [UIBezierPath bezierPathWithRect:self.pillView.bounds];
-    CGFloat notchWidth = MIN(28.0, self.bounds.size.width - 8.0);
+    CGFloat notchWidth = MIN(20.0, self.bounds.size.width - 8.0);
     [maskPath appendPath:[UIBezierPath bezierPathWithRect:CGRectMake((self.bounds.size.width - notchWidth) / 2.0,
-                                                                       self.bounds.size.height - 8.0,
-                                                                       notchWidth, 10.0)]];
+                                                                       self.bounds.size.height - 6.0,
+                                                                       notchWidth, 8.0)]];
     mask.path = maskPath.CGPath;
     self.batteryOutlineLayer.mask = mask;
     self.batteryOutlineLayer.strokeEnd = MIN(1.0, MAX(0.04, self.batteryFraction));
@@ -126,9 +126,16 @@ static __attribute__((unused)) NSInteger LWVisibleSignalLayers(CALayer *layer) {
     // Do not instantiate CoreTelephony from SpringBoard. It is not needed for
     // the visual smoke test and keeps this build independent of its service
     // lifecycle during SpringBoard launch.
-    NSMutableString *dots = [NSMutableString string];
-    for (NSInteger i = 0; i < 4; i++) [dots appendString:(i < LWSignalBars ? @"●" : @"○")];
-    self.signalLabel.text = dots;
+    NSArray<NSString *> *bars = @[@"▁", @"▃", @"▅", @"▇"];
+    NSMutableAttributedString *meter = [NSMutableAttributedString new];
+    for (NSInteger i = 0; i < bars.count; i++) {
+        UIColor *color = i < LWSignalBars ? UIColor.whiteColor : [UIColor colorWithWhite:1.0 alpha:0.22];
+        [meter appendAttributedString:[[NSAttributedString alloc] initWithString:bars[i] attributes:@{
+            NSFontAttributeName: self.signalLabel.font,
+            NSForegroundColorAttributeName: color,
+        }]];
+    }
+    self.signalLabel.attributedText = meter;
     self.wifiImage.hidden = !LWHasWiFi;
 
     UIDevice *device = UIDevice.currentDevice;
@@ -431,7 +438,7 @@ static __attribute__((unused)) void LWInstallIntoStatusBar(UIStatusBar *statusBa
     LWRefreshNativeSignalBars(item.window);
     UIView *host = item.superview;
     CGRect anchor = [item convertRect:item.bounds toView:host];
-    CGFloat h = 24.0;
+    CGFloat h = 20.0;
     capsule.frame = CGRectMake(CGRectGetMinX(anchor) - 2.0, CGRectGetMidY(anchor) - h / 2.0,
                                MIN(106.0, CGRectGetWidth(anchor) + 4.0), h);
     [host bringSubviewToFront:capsule];
@@ -449,7 +456,7 @@ static __attribute__((unused)) void LWInstallIntoStatusBar(UIStatusBar *statusBa
     UIView *host = item.superview;
     if (capsule.superview != host) [host addSubview:capsule];
     CGRect anchor = [item convertRect:item.bounds toView:host];
-    CGFloat h = 24.0;
+    CGFloat h = 20.0;
     capsule.frame = CGRectMake(CGRectGetMinX(anchor) - 2.0, CGRectGetMidY(anchor) - h / 2.0,
                                MIN(106.0, CGRectGetWidth(anchor) + 4.0), h);
     [host bringSubviewToFront:capsule];
