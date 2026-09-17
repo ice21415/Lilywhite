@@ -85,6 +85,7 @@ static LWStatusCapsule *LWCapsule;
 
 static void LWLogNativeStatusBarCandidates(UIWindow *window) {
     NSMutableArray *pending = [NSMutableArray arrayWithObject:window];
+    NSMutableString *report = [NSMutableString string];
     NSUInteger visited = 0;
     while (pending.count && visited < 400) {
         UIView *view = pending.lastObject;
@@ -92,6 +93,9 @@ static void LWLogNativeStatusBarCandidates(UIWindow *window) {
         visited++;
         NSString *name = NSStringFromClass(view.class);
         if ([name rangeOfString:@"statusbar" options:NSCaseInsensitiveSearch].location != NSNotFound) {
+            [report appendFormat:@"candidate=%@ frame=%@ hidden=%d super=%@\n",
+             name, NSStringFromCGRect(view.frame), view.hidden,
+             NSStringFromClass(view.superview.class)];
             NSLog(@"[Lilywhite] candidate=%@ frame=%@ hidden=%d super=%@",
                   name, NSStringFromCGRect(view.frame), view.hidden,
                   NSStringFromClass(view.superview.class));
@@ -100,6 +104,10 @@ static void LWLogNativeStatusBarCandidates(UIWindow *window) {
     }
     NSLog(@"[Lilywhite] candidate scan complete visited=%lu window=%@",
           (unsigned long)visited, NSStringFromClass(window.class));
+    [report appendFormat:@"scan complete visited=%lu window=%@\n",
+     (unsigned long)visited, NSStringFromClass(window.class)];
+    [report writeToFile:@"/var/mobile/Library/LilywhiteStatus.txt"
+             atomically:YES encoding:NSUTF8StringEncoding error:nil];
 }
 
 static void LWInstall(void) {
