@@ -348,7 +348,7 @@ static void LWLoadExistingNotificationRequests(id masterList) {
             }
             [debug addObject:[NSString stringWithFormat:@"section=%@", NSStringFromClass([object class])]];
             LWDescribeNotificationContainer(object, debug);
-            for (NSString *key in @[@"notificationRequests", @"requests", @"visibleNotificationRequests", @"_visibleNotificationRequests"]) {
+            for (NSString *key in @[@"allNotificationRequests", @"filteredNotificationRequests", @"notificationRequests", @"requests", @"visibleNotificationRequests", @"_visibleNotificationRequests"]) {
                 id sectionRequests = LWKVC(object, key);
                 if (![sectionRequests conformsToProtocol:@protocol(NSFastEnumeration)]) continue;
                 NSArray *requestList = [sectionRequests isKindOfClass:NSArray.class] ? sectionRequests : [sectionRequests allObjects];
