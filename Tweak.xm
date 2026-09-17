@@ -8,7 +8,7 @@
 
 static NSString * const LWOverlayTag = @"com.user.lilywhite.overlay";
 static BOOL LWHasWiFi;
-static NSInteger LWSignalBars = 4;
+static NSInteger LWSignalBars = 0;
 
 static __attribute__((unused)) NSInteger LWVisibleSignalLayers(CALayer *layer) {
     NSInteger count = 0;
@@ -45,8 +45,8 @@ static __attribute__((unused)) NSInteger LWVisibleSignalLayers(CALayer *layer) {
     self.pillView.userInteractionEnabled = NO;
     [self addSubview:self.pillView];
 
-    self.timeLabel = [self labelWithFont:[UIFont monospacedDigitSystemFontOfSize:13 weight:UIFontWeightSemibold]];
-    self.signalLabel = [self labelWithFont:[UIFont systemFontOfSize:9 weight:UIFontWeightMedium]];
+    self.timeLabel = [self labelWithFont:[UIFont monospacedDigitSystemFontOfSize:15 weight:UIFontWeightSemibold]];
+    self.signalLabel = [self labelWithFont:[UIFont systemFontOfSize:6.5 weight:UIFontWeightSemibold]];
     self.wifiImage = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"wifi"]];
     self.wifiImage.tintColor = UIColor.whiteColor;
     self.wifiImage.contentMode = UIViewContentModeScaleAspectFit;
@@ -195,6 +195,36 @@ static BOOL LWIsActualClockItem(UIView *item) {
     id text = nil;
     @try { text = [item valueForKey:@"text"]; } @catch (__unused NSException *e) {}
     return LWLooksLikeClockText(text);
+}
+
+static void LWRefreshNativeSignalBars(UIView *root) {
+    if (!root) return;
+    NSInteger detected = -1;
+    NSMutableArray<UIView *> *pending = [NSMutableArray arrayWithObject:root];
+    while (pending.count && detected < 0) {
+        UIView *view = pending.lastObject;
+        [pending removeLastObject];
+        if ([NSStringFromClass(view.class) containsString:@"STUIStatusBarCellularSignalView"]) {
+            NSString *accessibility = [NSString stringWithFormat:@"%@ %@", view.accessibilityValue ?: @"", view.accessibilityLabel ?: @""];
+            NSRegularExpression *digits = [NSRegularExpression regularExpressionWithPattern:@"(^|[^0-9])([0-4])([^0-9]|$)" options:0 error:nil];
+            NSTextCheckingResult *match = [digits firstMatchInString:accessibility options:0 range:NSMakeRange(0, accessibility.length)];
+            if (match.numberOfRanges > 2) detected = [[accessibility substringWithRange:[match rangeAtIndex:2]] integerValue];
+            for (NSString *key in @[@"numberOfBars", @"signalBars", @"displayedBars", @"_numberOfBars", @"level"]) {
+                if (detected >= 0) break;
+                @try {
+                    id value = [view valueForKey:key];
+                    NSInteger bars = [value respondsToSelector:@selector(integerValue)] ? [value integerValue] : -1;
+                    if (bars >= 0 && bars <= 4) detected = bars;
+                } @catch (__unused NSException *e) {}
+            }
+            if (detected < 0) {
+                NSInteger layers = LWVisibleSignalLayers(view.layer);
+                if (layers >= 0 && layers <= 4) detected = layers;
+            }
+        }
+        [pending addObjectsFromArray:view.subviews];
+    }
+    if (detected >= 0) LWSignalBars = detected;
 }
 
 static __attribute__((unused)) void LWWriteRuntimeMap(void) {
@@ -398,6 +428,7 @@ static __attribute__((unused)) void LWInstallIntoStatusBar(UIStatusBar *statusBa
         [item.superview addSubview:capsule];
     }
     if ([item isKindOfClass:UILabel.class]) ((UILabel *)item).textColor = UIColor.clearColor;
+    LWRefreshNativeSignalBars(item.window);
     UIView *host = item.superview;
     CGRect anchor = [item convertRect:item.bounds toView:host];
     CGFloat h = 24.0;
@@ -414,6 +445,7 @@ static __attribute__((unused)) void LWInstallIntoStatusBar(UIStatusBar *statusBa
     LWStatusCapsule *capsule = objc_getAssociatedObject(item, &LWNativeCapsuleKey);
     if (!capsule) return;
     if ([item isKindOfClass:UILabel.class]) ((UILabel *)item).textColor = UIColor.clearColor;
+    LWRefreshNativeSignalBars(item.window);
     UIView *host = item.superview;
     if (capsule.superview != host) [host addSubview:capsule];
     CGRect anchor = [item convertRect:item.bounds toView:host];
