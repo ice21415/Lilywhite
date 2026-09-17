@@ -673,6 +673,19 @@ static __attribute__((unused)) void LWInstallIntoStatusBar(UIStatusBar *statusBa
 // window's native event stream and only react to an ended touch inside the
 // capsule's rendered frame.
 %hook SBStatusBarWindow
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+    if (LWCapsule && !LWCapsule.hidden && LWCapsule.superview) {
+        CGRect capsuleFrame = [LWCapsule convertRect:LWCapsule.bounds toView:(UIView *)(id)self];
+        if (CGRectContainsPoint(capsuleFrame, point)) {
+            // The system normally routes status-bar taps before the sibling
+            // capsule can participate in hit testing.  Claim only this small
+            // frame; everything else continues through the native result.
+            return LWCapsule;
+        }
+    }
+    return %orig;
+}
+
 - (void)sendEvent:(UIEvent *)event {
     if (event.type == UIEventTypeTouches && LWCapsule && !LWCapsule.hidden) {
         for (UITouch *touch in event.allTouches) {
