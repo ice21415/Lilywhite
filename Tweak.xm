@@ -117,7 +117,8 @@ static void LWWriteRuntimeMap(void) {
     __block NSUInteger count = 0;
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Warc-retain-cycles"
-    void (^dump)(UIView *, NSUInteger) = ^(UIView *view, NSUInteger depth) {
+    __block void (^dump)(UIView *, NSUInteger);
+    dump = ^(UIView *view, NSUInteger depth) {
         if (!view || depth > 10 || count++ > 800) return;
         NSString *text = @"";
         if ([view isKindOfClass:UILabel.class]) text = ((UILabel *)view).text ?: @"";
