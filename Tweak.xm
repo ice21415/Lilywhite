@@ -2,6 +2,7 @@
 #import <UIKit/UIApplication+Private.h>
 #import <UIKit/UIStatusBar.h>
 #import <objc/runtime.h>
+#import <objc/message.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
@@ -134,6 +135,7 @@ static BOOL LWNotificationMapCaptured;
 static UIView *LWNotificationTray;
 static NSMutableDictionary<NSString *, NSDictionary *> *LWNotificationRequests;
 static NSMutableArray<NSString *> *LWNotificationOrder;
+static NSMutableDictionary<NSString *, UIImage *> *LWNotificationIconCache;
 
 static __attribute__((unused)) BOOL LWIsSpringBoardProcess(void) {
     return [NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.apple.springboard"];
@@ -217,6 +219,45 @@ static id LWKVC(id object, NSString *key) {
     @try { return [object valueForKey:key]; } @catch (__unused NSException *e) { return nil; }
 }
 
+static UIImage *LWApplicationIconForNotification(id bulletin, NSString *section) {
+    if (!section.length) return nil;
+    if (!LWNotificationIconCache) LWNotificationIconCache = [NSMutableDictionary dictionary];
+    UIImage *cached = LWNotificationIconCache[section];
+    if (cached) return cached;
+
+    NSString *bundlePath = LWKVC(bulletin, @"sectionBundlePath");
+    if (!bundlePath.length) {
+        Class workspaceClass = NSClassFromString(@"LSApplicationWorkspace");
+        SEL workspaceSelector = NSSelectorFromString(@"defaultWorkspace");
+        SEL proxySelector = NSSelectorFromString(@"applicationProxyForIdentifier:");
+        if (workspaceClass && [workspaceClass respondsToSelector:workspaceSelector]) {
+            id workspace = ((id (*)(id, SEL))objc_msgSend)(workspaceClass, workspaceSelector);
+            if ([workspace respondsToSelector:proxySelector]) {
+                id proxy = ((id (*)(id, SEL, id))objc_msgSend)(workspace, proxySelector, section);
+                NSURL *bundleURL = LWKVC(proxy, @"bundleURL");
+                bundlePath = bundleURL.path;
+            }
+        }
+    }
+    if (!bundlePath.length) return nil;
+    NSBundle *bundle = [NSBundle bundleWithPath:bundlePath];
+    NSDictionary *icons = bundle.infoDictionary[@"CFBundleIcons"];
+    NSDictionary *primary = icons[@"CFBundlePrimaryIcon"];
+    NSArray<NSString *> *names = primary[@"CFBundleIconFiles"];
+    for (NSString *name in names.reverseObjectEnumerator) {
+        NSString *base = [name stringByDeletingPathExtension];
+        for (NSString *candidate in @[name, [base stringByAppendingString:@".png"], [base stringByAppendingString:@"@3x.png"], [base stringByAppendingString:@"@2x.png"]]) {
+            NSString *path = [bundlePath stringByAppendingPathComponent:candidate];
+            UIImage *image = [UIImage imageWithContentsOfFile:path];
+            if (image) {
+                LWNotificationIconCache[section] = image;
+                return image;
+            }
+        }
+    }
+    return nil;
+}
+
 static void LWHideNativeRightStatusItems(UIView *view, UIWindow *window) {
     for (UIView *child in view.subviews) {
         NSString *name = NSStringFromClass(child.class);
@@ -274,6 +315,7 @@ static void LWTrackNotificationRequest(id request, BOOL removed) {
     } else {
         id bulletin = LWKVC(request, @"bulletin");
         id icon = LWKVC(bulletin, @"sectionIcon") ?: LWKVC(bulletin, @"icon");
+        if (![icon isKindOfClass:UIImage.class]) icon = LWApplicationIconForNotification(bulletin, section);
         if (![icon isKindOfClass:UIImage.class]) return;
         LWNotificationRequests[section] = @{ @"image": icon };
         [LWNotificationOrder removeObject:section];
