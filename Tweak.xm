@@ -146,6 +146,10 @@ static CGRect LWNativeTimeRect;
 static UIView *LWNativeTimeView;
 static NSString *LWRuntimeMap;
 
+static BOOL LWIsSpringBoardProcess(void) {
+    return [NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.apple.springboard"];
+}
+
 static void LWStartRuntimeSocket(void) {
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
         int server = socket(AF_INET, SOCK_STREAM, 0);
@@ -364,10 +368,15 @@ static void LWInstallIntoStatusBar(UIStatusBar *statusBar) {
             });
         }];
         LWInstallIntoStatusBar(UIApplication.sharedApplication.statusBar);
-        LWStartRuntimeSocket();
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            LWWriteRuntimeMap();
-        });
+        // Runtime diagnostics are SpringBoard-only. Foreground applications
+        // need the visual replacement, but must not each create a socket or
+        // write a shared diagnostic file.
+        if (LWIsSpringBoardProcess()) {
+            LWStartRuntimeSocket();
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                LWWriteRuntimeMap();
+            });
+        }
     });
 }
 
