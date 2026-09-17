@@ -79,13 +79,17 @@ static NSInteger LWVisibleSignalLayers(CALayer *layer) {
 - (void)layoutSubviews {
     [super layoutSubviews];
     CGFloat h = self.bounds.size.height;
-    CGFloat pillHeight = MIN(24.0, h - 8.0);
-    self.pillView.frame = CGRectMake(0.0, 0.0, self.bounds.size.width, pillHeight);
+    // The capsule is one shape; the bottom-center dock sits inside it and
+    // masks the border to create a real notch instead of hanging below.
+    CGFloat pillHeight = h;
+    self.pillView.frame = self.bounds;
     self.pillView.layer.cornerRadius = pillHeight / 2.0;
-    self.signalDock.frame = CGRectMake(MAX(0.0, (self.bounds.size.width - 30.0) / 2.0), pillHeight - 1.0, MIN(30.0, self.bounds.size.width), 12.0);
-    self.signalDock.layer.cornerRadius = 6.0;
+    CGFloat dockWidth = MIN(28.0, self.bounds.size.width - 8.0);
+    self.signalDock.frame = CGRectMake(MAX(4.0, (self.bounds.size.width - dockWidth) / 2.0),
+                                       MAX(0.0, pillHeight - 11.0), dockWidth, 11.0);
+    self.signalDock.layer.cornerRadius = 5.5;
     CGFloat wifiOffset = self.wifiImage.hidden ? 0.0 : 12.0;
-    self.timeLabel.frame = CGRectMake(wifiOffset, 0.0, MAX(8.0, self.bounds.size.width - wifiOffset), pillHeight);
+    self.timeLabel.frame = CGRectMake(wifiOffset, 0.0, MAX(8.0, self.bounds.size.width - wifiOffset), MAX(20.0, pillHeight - 7.0));
     self.signalLabel.frame = self.signalDock.bounds;
     self.wifiImage.frame = CGRectMake(6.0, 3.0, 13.0, 13.0);
     CGRect outline = CGRectInset(self.pillView.bounds, 1.5, 1.5);
