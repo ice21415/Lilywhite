@@ -153,6 +153,16 @@ static void LWInstallIntoStatusBar(UIStatusBar *statusBar) {
 }
 
 %hook UIStatusBar
+- (void)didMoveToWindow {
+    %orig;
+    UIStatusBar *bar = self;
+    // App switches can create a fresh status-bar instance after the active
+    // notification has already fired. Install on the new instance itself.
+    dispatch_async(dispatch_get_main_queue(), ^{
+        LWInstallIntoStatusBar(bar);
+    });
+}
+
 - (void)layoutSubviews {
     %orig;
     dispatch_async(dispatch_get_main_queue(), ^{
