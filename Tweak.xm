@@ -792,31 +792,12 @@ static __attribute__((unused)) void LWInstallIntoStatusBar(UIStatusBar *statusBa
 // the left capsule is a sibling of the native clock item.
 static void LWUpdateNativeRightAnchor(UIView *item) {
     UIWindow *window = item.window;
-    if (!window) return;
+    if (!window || item.hidden) return;
     CGRect screenFrame = [item convertRect:item.bounds toView:window];
     if (CGRectGetMidX(screenFrame) < window.bounds.size.width * 0.72) return;
     LWStatusWindow = window;
     LWNativeRightAnchor = item;
     LWRenderNotificationTray();
-}
-
-static void LWRefreshNativeRightStatusItem(UIView *item) {
-    UIWindow *window = item.window;
-    if (!window) return;
-    CGRect screenFrame = [item convertRect:item.bounds toView:window];
-    if (CGRectGetMidX(screenFrame) < window.bounds.size.width * 0.72) return;
-    LWStatusWindow = window;
-    // During an App switch the cellular item can be recreated after its
-    // siblings. Recover the new anchor from the same STUI host before drawing.
-    if (![LWNativeRightAnchor.superview isEqual:item.superview]) {
-        for (UIView *sibling in item.superview.subviews) {
-            if ([NSStringFromClass(sibling.class) containsString:@"STUIStatusBarCellularSignalView"]) {
-                LWNativeRightAnchor = sibling;
-                break;
-            }
-        }
-    }
-    if (LWNotificationOrder.count && LWNativeRightAnchor.superview) LWRenderNotificationTray();
 }
 
 %hook STUIStatusBarCellularSignalView
@@ -828,33 +809,6 @@ static void LWRefreshNativeRightStatusItem(UIView *item) {
 - (void)layoutSubviews {
     %orig;
     LWUpdateNativeRightAnchor((UIView *)(id)self);
-}
-%end
-
-// iOS re-shows these native items when radio state changes (Wi-Fi <-> LTE) or
-// when a new application status bar is laid out. Re-render after their own
-// layout has completed so active notification icons remain authoritative.
-%hook STUIStatusBarCellularNetworkTypeView
-- (void)didMoveToWindow {
-    %orig;
-    LWRefreshNativeRightStatusItem((UIView *)(id)self);
-}
-
-- (void)layoutSubviews {
-    %orig;
-    LWRefreshNativeRightStatusItem((UIView *)(id)self);
-}
-%end
-
-%hook STUIStatusBarBatteryView
-- (void)didMoveToWindow {
-    %orig;
-    LWRefreshNativeRightStatusItem((UIView *)(id)self);
-}
-
-- (void)layoutSubviews {
-    %orig;
-    LWRefreshNativeRightStatusItem((UIView *)(id)self);
 }
 %end
 
