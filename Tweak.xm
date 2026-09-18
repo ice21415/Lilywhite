@@ -173,6 +173,7 @@ static NSMutableDictionary<NSString *, NSDictionary *> *LWNotificationRequests;
 static NSMutableArray<NSString *> *LWNotificationOrder;
 static NSMutableDictionary<NSString *, UIImage *> *LWNotificationIconCache;
 static char LWNativeRightHiddenKey;
+static BOOL LWNativeRightReclaimScheduled;
 
 static void LWStartRuntimeSocket(void);
 static void LWStartTouchRuntimeSocket(void);
@@ -859,6 +860,21 @@ static void LWUpdateNativeRightAnchor(UIView *item) {
     LWRenderNotificationTray();
 }
 
+// The status-bar transition ends after layoutSubviews has run: iOS then
+// unhides an individual native indicator. Reclaim on the next animation tick
+// so the system's final visibility write cannot cover the tray again.
+static void LWScheduleNativeRightReclaim(UIView *item) {
+    if (!LWNotificationOrder.count || LWNativeRightReclaimScheduled) return;
+    UIWindow *window = item.window ?: LWStatusWindow;
+    if (!window || LWIsTransientRightStatusWindow(window)) return;
+    LWNativeRightReclaimScheduled = YES;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.08 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        LWNativeRightReclaimScheduled = NO;
+        if (item && !item.hidden) LWUpdateNativeRightAnchor(item);
+        LWRenderNotificationTray();
+    });
+}
+
 %hook STUIStatusBarCellularSignalView
 - (void)didMoveToWindow {
     %orig;
@@ -868,6 +884,25 @@ static void LWUpdateNativeRightAnchor(UIView *item) {
 - (void)layoutSubviews {
     %orig;
     LWUpdateNativeRightAnchor((UIView *)(id)self);
+}
+
+- (void)setHidden:(BOOL)hidden {
+    %orig;
+    if (!hidden) LWScheduleNativeRightReclaim((UIView *)(id)self);
+}
+%end
+
+%hook STUIStatusBarBatteryView
+- (void)setHidden:(BOOL)hidden {
+    %orig;
+    if (!hidden) LWScheduleNativeRightReclaim((UIView *)(id)self);
+}
+%end
+
+%hook STUIStatusBarCellularNetworkTypeView
+- (void)setHidden:(BOOL)hidden {
+    %orig;
+    if (!hidden) LWScheduleNativeRightReclaim((UIView *)(id)self);
 }
 %end
 
