@@ -1,29 +1,20 @@
 # Lilywhite
 
-A clean integrated status bar capsule tweak for iOS 17.1.2 RootHide.
+Public binary and Sileo repository for Lilywhite.
 
-## Current build
-
-- Version: 0.1.5
-- Target: SpringBoard
-- Package scheme: RootHide
+- Target: iOS 17.1.2 RootHide
 - Architecture: arm64e
-- Minimum iOS: 15.0
+- Package: `com.user.lilywhite`
+- Sileo source: https://ice21415.github.io/Lilywhite/
 
-This build keeps the previously stable status-bar implementation and adds targeted fixes for the right-side notification icon tray, including restoration after opening and dismissing Notification Center. Release builds compile out Lilywhite's runtime diagnostic sockets/maps, strip debug symbols, hide ordinary symbols where possible, dead-strip unused code, and reconcile notification state after removals.
+This repository intentionally contains release packages and APT metadata only.
+The source code and build configuration are kept in a separate private repository.
 
-## Install with Sileo
+## Files
 
-Add this repository:
+- `*.deb` — installable RootHide packages
+- `Packages` / `Packages.bz2` — Sileo/APT package index
+- `Release` — repository metadata
 
-https://ice21415.github.io/Lilywhite/
-
-GitHub Actions automatically builds the RootHide package after changes to the tweak/build files and refreshes the repository metadata.
-
-## Build locally
-
-```sh
-THEOS=/path/to/roothide-theos make package THEOS_PACKAGE_SCHEME=roothide
-```
-
-The generated package is written to `build-packages/`.
+New release packages are built from the private source repository. Automatic
+publishing is enabled there when its `PUBLIC_REPO_TOKEN` Actions secret is configured.
