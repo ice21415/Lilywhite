@@ -876,6 +876,38 @@ static void LWUpdateNativeRightAnchor(UIView *item) {
     %orig;
     LWUpdateNativeRightAnchor((UIView *)(id)self);
 }
+
+// SpringBoard re-enables the native signal item when an app becomes active.
+// Reclaim the right cluster from that exact state change rather than hooking a
+// broad foreground/status-bar container lifecycle.
+- (void)setHidden:(BOOL)hidden {
+    %orig;
+    if (hidden || !LWNotificationOrder.count) return;
+    UIView *item = (UIView *)(id)self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        LWUpdateNativeRightAnchor(item);
+        LWRenderNotificationTray();
+    });
+}
+%end
+
+// iOS can restore any member of the native right cluster independently (for
+// example after changing Wi-Fi or returning from an app).  The signal view
+// remains the placement anchor; these hooks only ask it to reclaim the group.
+%hook STUIStatusBarBatteryView
+- (void)setHidden:(BOOL)hidden {
+    %orig;
+    if (hidden || !LWNotificationOrder.count) return;
+    dispatch_async(dispatch_get_main_queue(), ^{ LWRenderNotificationTray(); });
+}
+%end
+
+%hook STUIStatusBarCellularNetworkTypeView
+- (void)setHidden:(BOOL)hidden {
+    %orig;
+    if (hidden || !LWNotificationOrder.count) return;
+    dispatch_async(dispatch_get_main_queue(), ^{ LWRenderNotificationTray(); });
+}
 %end
 
 // The clock is rebuilt as an STUIStatusBarStringView during app transitions,
