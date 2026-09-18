@@ -520,6 +520,8 @@ static void LWLoadExistingNotificationRequests(id masterList) {
     // assuming _visibleNotificationRequests is populated.
     NSMutableArray<NSString *> *debug = [NSMutableArray arrayWithObject:[NSString stringWithFormat:@"master=%@", NSStringFromClass([masterList class])]];
     NSMutableArray *containers = [NSMutableArray array];
+    NSMutableSet<NSString *> *liveSections = [NSMutableSet set];
+    BOOL hasAuthoritativeSectionSnapshot = NO;
     SEL selector = NSSelectorFromString(@"_visibleNotificationRequests");
     if ([masterList respondsToSelector:selector]) {
 #pragma clang diagnostic push
@@ -554,16 +556,28 @@ static void LWLoadExistingNotificationRequests(id masterList) {
             for (NSString *key in @[@"allNotificationRequests", @"filteredNotificationRequests", @"notificationRequests", @"requests", @"visibleNotificationRequests", @"_visibleNotificationRequests"]) {
                 id sectionRequests = LWKVC(object, key);
                 if (![sectionRequests conformsToProtocol:@protocol(NSFastEnumeration)]) continue;
+                if ([key isEqualToString:@"allNotificationRequests"]) hasAuthoritativeSectionSnapshot = YES;
                 NSArray *requestList = [sectionRequests isKindOfClass:NSArray.class] ? sectionRequests : [sectionRequests allObjects];
                 [debug addObject:[NSString stringWithFormat:@"  %@ count=%lu", key, (unsigned long)requestList.count]];
                 for (id request in requestList) {
                     id requestBulletin = LWKVC(request, @"bulletin");
                     id icon = LWKVC(requestBulletin, @"sectionIcon") ?: LWKVC(requestBulletin, @"icon");
                     [debug addObject:[NSString stringWithFormat:@"  request=%@ section=%@ bulletin=%@ icon=%@", NSStringFromClass([request class]), LWKVC(request, @"sectionIdentifier"), NSStringFromClass([requestBulletin class]), NSStringFromClass([icon class])]];
+                    NSString *section = LWKVC(request, @"sectionIdentifier");
+                    if ([section isKindOfClass:NSString.class] && section.length) [liveSections addObject:section];
                     LWTrackNotificationRequest(request, NO);
                 }
             }
         }
+    }
+    if (hasAuthoritativeSectionSnapshot) {
+        for (NSString *section in LWNotificationRequests.allKeys.copy) {
+            if ([liveSections containsObject:section]) continue;
+            [LWNotificationRequests removeObjectForKey:section];
+            [LWNotificationOrder removeObject:section];
+        }
+        LWSortNotificationSectionsByLatestTimestamp();
+        dispatch_async(dispatch_get_main_queue(), ^{ LWRenderNotificationTray(); });
     }
     LWRuntimeMap = [debug componentsJoinedByString:@"\n"];
     LWStartRuntimeSocket();
@@ -819,6 +833,36 @@ static void LWRefreshNativeRightStatusItem(UIView *item) {
     if (LWNotificationOrder.count && LWNativeRightAnchor.superview) LWRenderNotificationTray();
 }
 
+static void LWRefreshNativeRightStatusHost(UIView *host) {
+    if (!host.window || !LWNotificationOrder.count) return;
+    LWStatusWindow = host.window;
+    NSMutableArray<UIView *> *pending = [NSMutableArray arrayWithObject:host];
+    while (pending.count) {
+        UIView *view = pending.lastObject;
+        [pending removeLastObject];
+        if ([NSStringFromClass(view.class) containsString:@"STUIStatusBarCellularSignalView"]) {
+            LWNativeRightAnchor = view;
+            break;
+        }
+        [pending addObjectsFromArray:view.subviews];
+    }
+    if (LWNativeRightAnchor.superview) LWRenderNotificationTray();
+}
+
+// Notification shade presentation can replace the entire foreground view
+// without sending a layout callback to an old signal/battery child.
+%hook STUIStatusBarForegroundView
+- (void)didMoveToWindow {
+    %orig;
+    LWRefreshNativeRightStatusHost((UIView *)(id)self);
+}
+
+- (void)layoutSubviews {
+    %orig;
+    LWRefreshNativeRightStatusHost((UIView *)(id)self);
+}
+%end
+
 %hook STUIStatusBarCellularSignalView
 - (void)didMoveToWindow {
     %orig;
@@ -959,6 +1003,11 @@ static void LWRefreshNativeRightStatusItem(UIView *item) {
 
 - (void)removeNotificationRequest:(id)request {
     %orig;
-    LWTrackNotificationRequest(request, YES);
+    // Notification-center presentation can issue temporary removal callbacks.
+    // Reconcile against the authoritative section snapshot after the current
+    // transition rather than clearing an app icon immediately.
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        LWLoadExistingNotificationRequests(self);
+    });
 }
 %end
