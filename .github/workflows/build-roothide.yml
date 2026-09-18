@@ -34,7 +34,7 @@ jobs:
           set -o pipefail
           export THEOS="$HOME/roothide-theos"
           mkdir -p build-packages
-          make clean package THEOS_PACKAGE_SCHEME=roothide FINALPACKAGE=1 2>&1 | tee build.log
+          make clean package THEOS_PACKAGE_SCHEME=roothide FINALPACKAGE=1 DEBUG=0 STRIP=1 2>&1 | tee build.log
 
       - name: Annotate build failure
         if: failure()

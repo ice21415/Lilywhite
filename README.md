@@ -4,13 +4,13 @@ A clean integrated status bar capsule tweak for iOS 17.1.2 RootHide.
 
 ## Current build
 
-- Version: 0.1.4
+- Version: 0.1.5
 - Target: SpringBoard
 - Package scheme: RootHide
 - Architecture: arm64e
 - Minimum iOS: 15.0
 
-This build keeps the previously stable status-bar implementation and adds targeted fixes for the right-side notification icon tray, including restoration after opening and dismissing Notification Center. It also reduces unnecessary timer/debug overhead and reconciles notification state after removals.
+This build keeps the previously stable status-bar implementation and adds targeted fixes for the right-side notification icon tray, including restoration after opening and dismissing Notification Center. Release builds compile out Lilywhite's runtime diagnostic sockets/maps, strip debug symbols, hide ordinary symbols where possible, dead-strip unused code, and reconcile notification state after removals.
 
 ## Install with Sileo
 

@@ -3,17 +3,20 @@
 #import <UIKit/UIStatusBar.h>
 #import <objc/runtime.h>
 #import <objc/message.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <unistd.h>
-
-static NSString * const LWOverlayTag = @"com.user.lilywhite.overlay";
-static BOOL LWHasWiFi;
-static NSInteger LWSignalBars = 0;
 
 #ifndef LILYWHITE_DEBUG
 #define LILYWHITE_DEBUG 0
 #endif
+
+#if LILYWHITE_DEBUG
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <unistd.h>
+#endif
+
+static NSString * const LWOverlayTag = @"com.user.lilywhite.overlay";
+static BOOL LWHasWiFi;
+static NSInteger LWSignalBars = 0;
 
 static NSDateFormatter *LWTimeFormatter(void) {
     static NSDateFormatter *formatter;
@@ -198,11 +201,13 @@ static __weak UIWindow *LWStatusWindow;
 static CGFloat LWNativeTimeHeight;
 static CGRect LWNativeTimeRect;
 static UIView *LWNativeTimeView;
+#if LILYWHITE_DEBUG
 static NSString *LWRuntimeMap;
 static NSString *LWTouchRuntimeMap;
+static BOOL LWNotificationMapCaptured;
+#endif
 static char LWNativeCapsuleKey;
 static char LWNativeActionTargetKey;
-static __attribute__((unused)) BOOL LWNotificationMapCaptured;
 static UIView *LWNotificationTray;
 static __weak UIView *LWNativeRightAnchor;
 static __weak UIView *LWNativeRightHost;
@@ -216,8 +221,10 @@ static NSMutableArray<NSString *> *LWNotificationOrder;
 static NSMutableDictionary<NSString *, UIImage *> *LWNotificationIconCache;
 static char LWNativeRightHiddenKey;
 
+#if LILYWHITE_DEBUG
 static void LWStartRuntimeSocket(void);
 static void LWStartTouchRuntimeSocket(void);
+#endif
 
 static void LWAttachNativeStatusBarAction(UIView *item, LWStatusCapsule *capsule) {
     for (UIView *ancestor = item; ancestor; ancestor = ancestor.superview) {
@@ -230,11 +237,12 @@ static void LWAttachNativeStatusBarAction(UIView *item, LWStatusCapsule *capsule
     }
 }
 
-static __attribute__((unused)) BOOL LWIsSpringBoardProcess(void) {
+#if LILYWHITE_DEBUG
+static BOOL LWIsSpringBoardProcess(void) {
     return [NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.apple.springboard"];
 }
 
-static __attribute__((unused)) void LWWriteNotificationRuntimeMap(void) {
+static void LWWriteNotificationRuntimeMap(void) {
     int count = objc_getClassList(NULL, 0);
     Class __unsafe_unretained *classes = (Class __unsafe_unretained *)calloc((size_t)count, sizeof(Class));
     count = objc_getClassList(classes, count);
@@ -276,7 +284,7 @@ static void LWDescribeStatusBarTouchView(UIView *view, NSUInteger depth, NSMutab
     for (UIView *child in view.subviews) LWDescribeStatusBarTouchView(child, depth + 1, output);
 }
 
-static __attribute__((unused)) void LWWriteStatusBarTouchMap(void) {
+static void LWWriteStatusBarTouchMap(void) {
     UIWindow *window = LWStatusWindow;
     if (!window) return;
     NSMutableString *output = [NSMutableString stringWithFormat:@"window=%@ frame=%@ enabled=%d\n",
@@ -300,7 +308,7 @@ static __attribute__((unused)) void LWWriteStatusBarTouchMap(void) {
     LWStartTouchRuntimeSocket();
 }
 
-static __attribute__((unused)) void LWStartRuntimeSocket(void) {
+static void LWStartRuntimeSocket(void) {
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
         int server = socket(AF_INET, SOCK_STREAM, 0);
         if (server < 0) return;
@@ -350,6 +358,8 @@ static void LWStartTouchRuntimeSocket(void) {
         close(server);
     });
 }
+
+#endif
 
 static __attribute__((unused)) BOOL LWLooksLikeClockText(NSString *text) {
     if (![text isKindOfClass:NSString.class] || text.length < 4 || text.length > 5) return NO;
@@ -528,34 +538,6 @@ static void LWTrackNotificationRequest(id request, BOOL removed) {
     }
     if (!LWReconcilingNotifications) {
         dispatch_async(dispatch_get_main_queue(), ^{ LWRenderNotificationTray(); });
-    }
-}
-
-static __attribute__((unused)) void LWDescribeNotificationContainer(id object, NSMutableArray<NSString *> *debug) {
-    if (!object) return;
-    NSMutableSet<NSString *> *reported = [NSMutableSet set];
-    for (Class cls = [object class]; cls && cls != NSObject.class; cls = class_getSuperclass(cls)) {
-        unsigned int methodCount = 0;
-        Method *methods = class_copyMethodList(cls, &methodCount);
-        for (unsigned int i = 0; i < methodCount; i++) {
-            NSString *selector = NSStringFromSelector(method_getName(methods[i]));
-            NSString *lower = selector.lowercaseString;
-            if (([lower containsString:@"request"] || [lower containsString:@"notification"] || [lower containsString:@"section"] || [lower containsString:@"list"]) && ![reported containsObject:selector]) {
-                [reported addObject:selector];
-                [debug addObject:[NSString stringWithFormat:@"  selector %@", selector]];
-            }
-        }
-        free(methods);
-        unsigned int ivarCount = 0;
-        Ivar *ivars = class_copyIvarList(cls, &ivarCount);
-        for (unsigned int i = 0; i < ivarCount; i++) {
-            NSString *name = @(ivar_getName(ivars[i]));
-            NSString *lower = name.lowercaseString;
-            if ([lower containsString:@"request"] || [lower containsString:@"notification"] || [lower containsString:@"section"] || [lower containsString:@"list"]) {
-                [debug addObject:[NSString stringWithFormat:@"  ivar %@", name]];
-            }
-        }
-        free(ivars);
     }
 }
 
