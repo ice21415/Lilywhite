@@ -187,7 +187,6 @@ static void LWStartRuntimeSocket(void);
 static void LWStartTouchRuntimeSocket(void);
 static void LWStartStatusLifecycleSocket(void);
 static UIImage *LWApplicationIconForNotification(id bulletin, NSString *section);
-static void LWFindAppRightAnchorInStatusBar(UIView *root);
 
 static void LWRecordStatusLifecycle(NSString *format, ...) {
     va_list args;
@@ -466,9 +465,9 @@ static void LWSetNativeRightStatusItemsHidden(UIView *view, UIWindow *window, BO
         if (isRight && isSystemIndicator) {
             if (hidden) {
                 objc_setAssociatedObject(child, &LWNativeRightHiddenKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-                if (!child.hidden) child.hidden = YES;
+                child.hidden = YES;
             } else if ([objc_getAssociatedObject(child, &LWNativeRightHiddenKey) boolValue]) {
-                if (child.hidden) child.hidden = NO;
+                child.hidden = NO;
                 objc_setAssociatedObject(child, &LWNativeRightHiddenKey, nil, OBJC_ASSOCIATION_ASSIGN);
             }
         }
@@ -888,12 +887,10 @@ static __attribute__((unused)) void LWInstallIntoStatusBar(UIStatusBar *statusBa
 %hook UIStatusBar
 - (void)didMoveToWindow {
     %orig;
-    LWFindAppRightAnchorInStatusBar((UIView *)(id)self);
 }
 
 - (void)layoutSubviews {
     %orig;
-    LWFindAppRightAnchorInStatusBar((UIView *)(id)self);
 }
 %end
 
@@ -921,28 +918,6 @@ static void LWUpdateNativeRightAnchor(UIView *item) {
     LWNativeRightAnchor = item;
     LWRecordStatusLifecycle(@"signal-anchor window=%@ host=%@ hidden=%d", NSStringFromClass(window.class), NSStringFromClass(item.superview.class), item.hidden);
     LWRenderNotificationTray();
-}
-
-// App status bars use a UIStatusBar root but not necessarily SpringBoard's
-// STUIStatusBarCellularSignalView subclass. Find the right-side cellular item
-// by its native class family and geometry, then reuse the same renderer.
-static void LWFindAppRightAnchorInStatusBar(UIView *root) {
-    if (LWIsSpringBoardProcess() || !LWNotificationOrder.count || !root.window) return;
-    NSMutableArray<UIView *> *pending = [NSMutableArray arrayWithObject:root];
-    UIView *candidate = nil;
-    while (pending.count && !candidate) {
-        UIView *view = pending.lastObject;
-        [pending removeLastObject];
-        NSString *name = NSStringFromClass(view.class);
-        CGRect frame = [view convertRect:view.bounds toView:root.window];
-        if (!view.hidden && CGRectGetMidX(frame) > root.window.bounds.size.width * 0.72 &&
-            [name containsString:@"Cellular"] && ([name containsString:@"Signal"] || [name containsString:@"Bars"])) {
-            candidate = view;
-            break;
-        }
-        for (UIView *child in view.subviews) [pending addObject:child];
-    }
-    if (candidate) LWUpdateNativeRightAnchor(candidate);
 }
 
 %hook STUIStatusBarCellularSignalView
