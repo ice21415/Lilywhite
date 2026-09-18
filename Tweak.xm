@@ -1012,6 +1012,11 @@ static void LWScheduleNativeRightReclaim(UIView *item) {
 - (void)removeNotificationRequest:(id)request {
     %orig;
     LWRecordStatusLifecycle(@"notification-remove section=%@", LWKVC(request, @"sectionIdentifier"));
-    LWTrackNotificationRequest(request, YES);
+    // iOS 17 emits this while Notification Center is rebuilding its rendered
+    // list during a pull-down transition. It does not reliably mean that the
+    // user dismissed the underlying notification. Removing the section here
+    // erased the complete right tray (sections=0) after every transition.
+    // Keep the last known app until a subsequent insert/modify or a fresh
+    // SpringBoard notification snapshot supplies authoritative state.
 }
 %end
