@@ -202,7 +202,7 @@ static NSString *LWRuntimeMap;
 static NSString *LWTouchRuntimeMap;
 static char LWNativeCapsuleKey;
 static char LWNativeActionTargetKey;
-static BOOL LWNotificationMapCaptured;
+static __attribute__((unused)) BOOL LWNotificationMapCaptured;
 static UIView *LWNotificationTray;
 static __weak UIView *LWNativeRightAnchor;
 static __weak UIView *LWNativeRightHost;
@@ -234,7 +234,7 @@ static __attribute__((unused)) BOOL LWIsSpringBoardProcess(void) {
     return [NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.apple.springboard"];
 }
 
-static void LWWriteNotificationRuntimeMap(void) {
+static __attribute__((unused)) void LWWriteNotificationRuntimeMap(void) {
     int count = objc_getClassList(NULL, 0);
     Class __unsafe_unretained *classes = (Class __unsafe_unretained *)calloc((size_t)count, sizeof(Class));
     count = objc_getClassList(classes, count);
@@ -276,7 +276,7 @@ static void LWDescribeStatusBarTouchView(UIView *view, NSUInteger depth, NSMutab
     for (UIView *child in view.subviews) LWDescribeStatusBarTouchView(child, depth + 1, output);
 }
 
-static void LWWriteStatusBarTouchMap(void) {
+static __attribute__((unused)) void LWWriteStatusBarTouchMap(void) {
     UIWindow *window = LWStatusWindow;
     if (!window) return;
     NSMutableString *output = [NSMutableString stringWithFormat:@"window=%@ frame=%@ enabled=%d\n",
@@ -531,7 +531,7 @@ static void LWTrackNotificationRequest(id request, BOOL removed) {
     }
 }
 
-static void LWDescribeNotificationContainer(id object, NSMutableArray<NSString *> *debug) {
+static __attribute__((unused)) void LWDescribeNotificationContainer(id object, NSMutableArray<NSString *> *debug) {
     if (!object) return;
     NSMutableSet<NSString *> *reported = [NSMutableSet set];
     for (Class cls = [object class]; cls && cls != NSObject.class; cls = class_getSuperclass(cls)) {
