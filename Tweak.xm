@@ -6,6 +6,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
+#include <stdarg.h>
 
 static NSString * const LWOverlayTag = @"com.user.lilywhite.overlay";
 static BOOL LWHasWiFi;
@@ -162,6 +163,7 @@ static CGRect LWNativeTimeRect;
 static UIView *LWNativeTimeView;
 static NSString *LWRuntimeMap;
 static NSString *LWTouchRuntimeMap;
+static NSMutableArray<NSString *> *LWStatusLifecycleEvents;
 static char LWNativeCapsuleKey;
 static char LWNativeActionTargetKey;
 static BOOL LWNotificationMapCaptured;
@@ -174,6 +176,17 @@ static char LWNativeRightHiddenKey;
 
 static void LWStartRuntimeSocket(void);
 static void LWStartTouchRuntimeSocket(void);
+static void LWStartStatusLifecycleSocket(void);
+
+static void LWRecordStatusLifecycle(NSString *format, ...) {
+    va_list args;
+    va_start(args, format);
+    NSString *message = [[NSString alloc] initWithFormat:format arguments:args];
+    va_end(args);
+    if (!LWStatusLifecycleEvents) LWStatusLifecycleEvents = [NSMutableArray array];
+    [LWStatusLifecycleEvents addObject:[NSString stringWithFormat:@"%.3f %@", NSProcessInfo.processInfo.systemUptime, message]];
+    if (LWStatusLifecycleEvents.count > 120) [LWStatusLifecycleEvents removeObjectAtIndex:0];
+}
 
 static void LWAttachNativeStatusBarAction(UIView *item, LWStatusCapsule *capsule) {
     for (UIView *ancestor = item; ancestor; ancestor = ancestor.superview) {
@@ -307,6 +320,32 @@ static void LWStartTouchRuntimeSocket(void) {
     });
 }
 
+static void LWStartStatusLifecycleSocket(void) {
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+        int server = socket(AF_INET, SOCK_STREAM, 0);
+        if (server < 0) return;
+        struct sockaddr_in addr = {0};
+        addr.sin_len = sizeof(addr);
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        addr.sin_port = htons(27045);
+        int yes = 1;
+        setsockopt(server, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
+        if (bind(server, (struct sockaddr *)&addr, sizeof(addr)) != 0 || listen(server, 1) != 0) {
+            close(server);
+            return;
+        }
+        int client = accept(server, NULL, NULL);
+        if (client >= 0) {
+            NSString *report = [LWStatusLifecycleEvents componentsJoinedByString:@"\n"] ?: @"(no lifecycle events)";
+            NSData *data = [report dataUsingEncoding:NSUTF8StringEncoding];
+            send(client, data.bytes, data.length, 0);
+            close(client);
+        }
+        close(server);
+    });
+}
+
 static __attribute__((unused)) BOOL LWLooksLikeClockText(NSString *text) {
     if (![text isKindOfClass:NSString.class] || text.length < 4 || text.length > 5) return NO;
     NSUInteger colon = [text rangeOfString:@":"].location;
@@ -394,6 +433,8 @@ static void LWRenderNotificationTray(void) {
     UIWindow *window = LWStatusWindow;
     UIView *anchor = LWNativeRightAnchor;
     UIView *host = anchor.superview;
+    LWRecordStatusLifecycle(@"render sections=%lu anchor=%@ host=%@", (unsigned long)sections.count,
+                            NSStringFromClass(anchor.class), NSStringFromClass(host.class));
     if (!window || !host) return;
     if (!sections.count) {
         LWNotificationTray.hidden = YES;
@@ -775,6 +816,9 @@ static __attribute__((unused)) void LWInstallIntoStatusBar(UIStatusBar *statusBa
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(6.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         LWWriteStatusBarTouchMap();
     });
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        LWStartStatusLifecycleSocket();
+    });
 }
 
 %hook UIStatusBar
@@ -797,6 +841,7 @@ static void LWUpdateNativeRightAnchor(UIView *item) {
     if (CGRectGetMidX(screenFrame) < window.bounds.size.width * 0.72) return;
     LWStatusWindow = window;
     LWNativeRightAnchor = item;
+    LWRecordStatusLifecycle(@"signal-anchor window=%@ host=%@ hidden=%d", NSStringFromClass(window.class), NSStringFromClass(item.superview.class), item.hidden);
     LWRenderNotificationTray();
 }
 
@@ -880,6 +925,7 @@ static void LWUpdateNativeRightAnchor(UIView *item) {
 %hook NCNotificationMasterList
 - (id)init {
     id masterList = %orig;
+    LWRecordStatusLifecycle(@"master-init %@", NSStringFromClass([masterList class]));
     // The master list fills asynchronously after SpringBoard starts, so take
     // two snapshots to cover the initial and fully-loaded notification state.
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
@@ -898,21 +944,25 @@ static void LWUpdateNativeRightAnchor(UIView *item) {
 
 - (void)_notificationListDidChangeContent {
     %orig;
+    LWRecordStatusLifecycle(@"notification-content-changed");
     LWLoadExistingNotificationRequests(self);
 }
 
 - (void)insertNotificationRequest:(id)request {
     %orig;
+    LWRecordStatusLifecycle(@"notification-insert section=%@", LWKVC(request, @"sectionIdentifier"));
     LWTrackNotificationRequest(request, NO);
 }
 
 - (void)modifyNotificationRequest:(id)request {
     %orig;
+    LWRecordStatusLifecycle(@"notification-modify section=%@", LWKVC(request, @"sectionIdentifier"));
     LWTrackNotificationRequest(request, NO);
 }
 
 - (void)removeNotificationRequest:(id)request {
     %orig;
+    LWRecordStatusLifecycle(@"notification-remove section=%@", LWKVC(request, @"sectionIdentifier"));
     LWTrackNotificationRequest(request, YES);
 }
 %end
