@@ -834,9 +834,23 @@ static __attribute__((unused)) void LWInstallIntoStatusBar(UIStatusBar *statusBa
 // Use the native cellular item only as a layout anchor.  The notification
 // tray becomes its sibling in the same STUI foreground hierarchy, exactly as
 // the left capsule is a sibling of the native clock item.
+static BOOL LWIsTransientRightStatusWindow(UIWindow *window) {
+    NSString *name = NSStringFromClass(window.class);
+    // Notification Center and Control Center construct throwaway STUI trees.
+    // Never move the one persistent tray into either tree: it is destroyed
+    // as soon as the sheet closes. SBMainSwitcherWindow is intentionally not
+    // excluded because it is used by the normal app-transition path.
+    return [name containsString:@"SBCoverSheetWindow"] ||
+           [name containsString:@"SBControlCenterWindow"];
+}
+
 static void LWUpdateNativeRightAnchor(UIView *item) {
     UIWindow *window = item.window;
     if (!window || item.hidden) return;
+    if (LWIsTransientRightStatusWindow(window)) {
+        LWRecordStatusLifecycle(@"ignored transient right-status window=%@", NSStringFromClass(window.class));
+        return;
+    }
     CGRect screenFrame = [item convertRect:item.bounds toView:window];
     if (CGRectGetMidX(screenFrame) < window.bounds.size.width * 0.72) return;
     LWStatusWindow = window;
