@@ -174,6 +174,7 @@ static NSMutableArray<NSString *> *LWNotificationOrder;
 static NSMutableDictionary<NSString *, UIImage *> *LWNotificationIconCache;
 static char LWNativeRightHiddenKey;
 static BOOL LWNativeRightReclaimScheduled;
+static BOOL LWPostSheetRestoreScheduled;
 
 static void LWStartRuntimeSocket(void);
 static void LWStartTouchRuntimeSocket(void);
@@ -845,11 +846,32 @@ static BOOL LWIsTransientRightStatusWindow(UIWindow *window) {
            [name containsString:@"SBControlCenterWindow"];
 }
 
+static void LWSchedulePostSheetRightTrayRestore(void) {
+    if (LWPostSheetRestoreScheduled || !LWNotificationOrder.count) return;
+    LWPostSheetRestoreScheduled = YES;
+    // Cover Sheet's last compositor transaction occurs after the native
+    // cellular item has returned to SBStatusBarWindow. Re-asserting once at
+    // the end and once after its completion avoids being covered by that
+    // transaction without touching an app process or its status bar.
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.45 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        if (LWNativeRightAnchor.window && !LWIsTransientRightStatusWindow(LWNativeRightAnchor.window)) {
+            LWRenderNotificationTray();
+        }
+    });
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.00 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        LWPostSheetRestoreScheduled = NO;
+        if (LWNativeRightAnchor.window && !LWIsTransientRightStatusWindow(LWNativeRightAnchor.window)) {
+            LWRenderNotificationTray();
+        }
+    });
+}
+
 static void LWUpdateNativeRightAnchor(UIView *item) {
     UIWindow *window = item.window;
     if (!window || item.hidden) return;
     if (LWIsTransientRightStatusWindow(window)) {
         LWRecordStatusLifecycle(@"ignored transient right-status window=%@", NSStringFromClass(window.class));
+        LWSchedulePostSheetRightTrayRestore();
         return;
     }
     CGRect screenFrame = [item convertRect:item.bounds toView:window];
