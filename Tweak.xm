@@ -167,7 +167,7 @@ static NSMutableArray<NSString *> *LWStatusLifecycleEvents;
 static char LWNativeCapsuleKey;
 static char LWNativeActionTargetKey;
 static BOOL LWNotificationMapCaptured;
-static UIView *LWNotificationTray;
+static char LWNotificationTrayKey;
 static __weak UIView *LWNativeRightAnchor;
 static NSMutableDictionary<NSString *, NSDictionary *> *LWNotificationRequests;
 static NSMutableArray<NSString *> *LWNotificationOrder;
@@ -438,20 +438,23 @@ static void LWRenderNotificationTray(void) {
     LWRecordStatusLifecycle(@"render sections=%lu anchor=%@ host=%@", (unsigned long)sections.count,
                             NSStringFromClass(anchor.class), NSStringFromClass(host.class));
     if (!window || !host) return;
+    // A pull-down creates several distinct STUIStatusBarForegroundView
+    // instances with the same class name. The tray must belong to its native
+    // host, rather than being one global view moved between those instances.
+    UIView *tray = objc_getAssociatedObject(host, &LWNotificationTrayKey);
+    if (!tray) {
+        tray = [[UIView alloc] initWithFrame:CGRectZero];
+        tray.userInteractionEnabled = NO;
+        objc_setAssociatedObject(host, &LWNotificationTrayKey, tray, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [host addSubview:tray];
+    }
     if (!sections.count) {
-        LWNotificationTray.hidden = YES;
+        tray.hidden = YES;
         LWSetNativeRightStatusItemsHidden(host, window, NO);
         return;
     }
-    if (!LWNotificationTray) {
-        LWNotificationTray = [[UIView alloc] initWithFrame:CGRectZero];
-        LWNotificationTray.userInteractionEnabled = NO;
-    }
-    if (LWNotificationTray.superview != host) {
-        [LWNotificationTray removeFromSuperview];
-        [host addSubview:LWNotificationTray];
-    }
-    for (UIView *subview in LWNotificationTray.subviews) [subview removeFromSuperview];
+    if (tray.superview != host) [host addSubview:tray];
+    for (UIView *subview in tray.subviews) [subview removeFromSuperview];
     CGFloat iconSize = 16.0;
     CGFloat spacing = 4.0;
     CGFloat width = sections.count * iconSize + (sections.count - 1) * spacing;
@@ -460,10 +463,10 @@ static void LWRenderNotificationTray(void) {
     // native right cluster.  Its right edge is therefore not the status
     // area's outer edge; align the notification group to that outer edge.
     CGFloat rightInset = 8.0;
-    LWNotificationTray.frame = CGRectMake(host.bounds.size.width - width - rightInset,
-                                          CGRectGetMidY(anchorFrame) - iconSize / 2.0,
-                                          width, iconSize);
-    LWNotificationTray.hidden = NO;
+    tray.frame = CGRectMake(host.bounds.size.width - width - rightInset,
+                            CGRectGetMidY(anchorFrame) - iconSize / 2.0,
+                            width, iconSize);
+    tray.hidden = NO;
     for (NSUInteger i = 0; i < sections.count; i++) {
         NSDictionary *entry = LWNotificationRequests[sections[i]];
         UIImage *image = entry[@"image"];
@@ -472,10 +475,10 @@ static void LWRenderNotificationTray(void) {
         imageView.contentMode = UIViewContentModeScaleAspectFill;
         imageView.layer.cornerRadius = 4.0;
         imageView.clipsToBounds = YES;
-        [LWNotificationTray addSubview:imageView];
+        [tray addSubview:imageView];
     }
     LWSetNativeRightStatusItemsHidden(host, window, YES);
-    [host bringSubviewToFront:LWNotificationTray];
+    [host bringSubviewToFront:tray];
 }
 
 static NSTimeInterval LWNotificationTimestamp(id request) {
