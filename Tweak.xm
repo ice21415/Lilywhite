@@ -169,11 +169,6 @@ static char LWNativeActionTargetKey;
 static BOOL LWNotificationMapCaptured;
 static UIView *LWNotificationTray;
 static __weak UIView *LWNativeRightAnchor;
-// The clock can legitimately live in transient Cover Sheet / switcher status
-// bars.  The notification replacement must never follow it there: retain one
-// anchor only for the persistent on-screen SBStatusBarWindow.
-static __weak UIWindow *LWNotificationStatusWindow;
-static BOOL LWNotificationTrayNeedsRebuild;
 static NSMutableDictionary<NSString *, NSDictionary *> *LWNotificationRequests;
 static NSMutableArray<NSString *> *LWNotificationOrder;
 static NSMutableDictionary<NSString *, UIImage *> *LWNotificationIconCache;
@@ -435,7 +430,7 @@ static void LWSetNativeRightStatusItemsHidden(UIView *view, UIWindow *window, BO
 
 static void LWRenderNotificationTray(void) {
     NSArray<NSString *> *sections = [LWNotificationOrder subarrayWithRange:NSMakeRange(0, MIN(3, LWNotificationOrder.count))];
-    UIWindow *window = LWNotificationStatusWindow;
+    UIWindow *window = LWStatusWindow;
     UIView *anchor = LWNativeRightAnchor;
     UIView *host = anchor.superview;
     LWRecordStatusLifecycle(@"render sections=%lu anchor=%@ host=%@", (unsigned long)sections.count,
@@ -450,11 +445,11 @@ static void LWRenderNotificationTray(void) {
         LWNotificationTray = [[UIView alloc] initWithFrame:CGRectZero];
         LWNotificationTray.userInteractionEnabled = NO;
     }
-    BOOL didMoveTray = LWNotificationTray.superview != host;
-    if (didMoveTray) {
+    if (LWNotificationTray.superview != host) {
         [LWNotificationTray removeFromSuperview];
         [host addSubview:LWNotificationTray];
     }
+    for (UIView *subview in LWNotificationTray.subviews) [subview removeFromSuperview];
     CGFloat iconSize = 16.0;
     CGFloat spacing = 4.0;
     CGFloat width = sections.count * iconSize + (sections.count - 1) * spacing;
@@ -467,19 +462,15 @@ static void LWRenderNotificationTray(void) {
                                           CGRectGetMidY(anchorFrame) - iconSize / 2.0,
                                           width, iconSize);
     LWNotificationTray.hidden = NO;
-    if (didMoveTray || LWNotificationTrayNeedsRebuild) {
-        for (UIView *subview in LWNotificationTray.subviews) [subview removeFromSuperview];
-        for (NSUInteger i = 0; i < sections.count; i++) {
-            NSDictionary *entry = LWNotificationRequests[sections[i]];
-            UIImage *image = entry[@"image"];
-            UIImageView *imageView = [[UIImageView alloc] initWithImage:image];
-            imageView.frame = CGRectMake(i * (iconSize + spacing), 0.0, iconSize, iconSize);
-            imageView.contentMode = UIViewContentModeScaleAspectFill;
-            imageView.layer.cornerRadius = 4.0;
-            imageView.clipsToBounds = YES;
-            [LWNotificationTray addSubview:imageView];
-        }
-        LWNotificationTrayNeedsRebuild = NO;
+    for (NSUInteger i = 0; i < sections.count; i++) {
+        NSDictionary *entry = LWNotificationRequests[sections[i]];
+        UIImage *image = entry[@"image"];
+        UIImageView *imageView = [[UIImageView alloc] initWithImage:image];
+        imageView.frame = CGRectMake(i * (iconSize + spacing), 0.0, iconSize, iconSize);
+        imageView.contentMode = UIViewContentModeScaleAspectFill;
+        imageView.layer.cornerRadius = 4.0;
+        imageView.clipsToBounds = YES;
+        [LWNotificationTray addSubview:imageView];
     }
     LWSetNativeRightStatusItemsHidden(host, window, YES);
     [host bringSubviewToFront:LWNotificationTray];
@@ -532,7 +523,6 @@ static void LWTrackNotificationRequest(id request, BOOL removed) {
         if (![LWNotificationOrder containsObject:section]) [LWNotificationOrder addObject:section];
         LWSortNotificationSectionsByLatestTimestamp();
     }
-    LWNotificationTrayNeedsRebuild = YES;
     dispatch_async(dispatch_get_main_queue(), ^{ LWRenderNotificationTray(); });
 }
 
@@ -844,23 +834,12 @@ static __attribute__((unused)) void LWInstallIntoStatusBar(UIStatusBar *statusBa
 // Use the native cellular item only as a layout anchor.  The notification
 // tray becomes its sibling in the same STUI foreground hierarchy, exactly as
 // the left capsule is a sibling of the native clock item.
-static BOOL LWIsPersistentStatusBarWindow(UIWindow *window) {
-    // The system creates temporary STUI status bars in Cover Sheet and the
-    // app switcher.  Only this window owns the status bar that remains after
-    // those transitions finish.
-    return [NSStringFromClass(window.class) isEqualToString:@"SBStatusBarWindow"];
-}
-
 static void LWUpdateNativeRightAnchor(UIView *item) {
     UIWindow *window = item.window;
     if (!window || item.hidden) return;
-    if (!LWIsPersistentStatusBarWindow(window)) {
-        LWRecordStatusLifecycle(@"ignored transient signal-anchor window=%@", NSStringFromClass(window.class));
-        return;
-    }
     CGRect screenFrame = [item convertRect:item.bounds toView:window];
     if (CGRectGetMidX(screenFrame) < window.bounds.size.width * 0.72) return;
-    LWNotificationStatusWindow = window;
+    LWStatusWindow = window;
     LWNativeRightAnchor = item;
     LWRecordStatusLifecycle(@"signal-anchor window=%@ host=%@ hidden=%d", NSStringFromClass(window.class), NSStringFromClass(item.superview.class), item.hidden);
     LWRenderNotificationTray();
