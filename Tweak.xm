@@ -7,6 +7,7 @@
 #include <netinet/in.h>
 #include <unistd.h>
 #include <stdarg.h>
+#include <notify.h>
 
 static NSString * const LWOverlayTag = @"com.user.lilywhite.overlay";
 static BOOL LWHasWiFi;
@@ -178,10 +179,14 @@ static NSMutableDictionary<NSString *, NSDictionary *> *LWNotificationRequests;
 static NSMutableArray<NSString *> *LWNotificationOrder;
 static NSMutableDictionary<NSString *, UIImage *> *LWNotificationIconCache;
 static char LWNativeRightHiddenKey;
+static int LWNotificationStateNotifyToken;
+static NSString * const LWNotificationStateDomain = @"com.user.lilywhite";
+static NSString * const LWNotificationStateKey = @"notificationSections";
 
 static void LWStartRuntimeSocket(void);
 static void LWStartTouchRuntimeSocket(void);
 static void LWStartStatusLifecycleSocket(void);
+static UIImage *LWApplicationIconForNotification(id bulletin, NSString *section);
 
 static void LWRecordStatusLifecycle(NSString *format, ...) {
     va_list args;
@@ -206,6 +211,43 @@ static void LWAttachNativeStatusBarAction(UIView *item, LWStatusCapsule *capsule
 
 static __attribute__((unused)) BOOL LWIsSpringBoardProcess(void) {
     return [NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.apple.springboard"];
+}
+
+// App processes cannot safely access SpringBoard's notification objects.
+// Share only the three bundle identifiers through the per-user preferences
+// domain; every process resolves its own icon locally from that identifier.
+static void LWPublishNotificationSections(void) {
+    if (!LWIsSpringBoardProcess()) return;
+    NSArray *sections = [LWNotificationOrder copy] ?: @[];
+    CFPreferencesSetValue((__bridge CFStringRef)LWNotificationStateKey,
+                          (__bridge CFPropertyListRef)sections,
+                          (__bridge CFStringRef)LWNotificationStateDomain,
+                          kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
+    CFPreferencesSynchronize((__bridge CFStringRef)LWNotificationStateDomain,
+                             kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
+    notify_post("com.user.lilywhite.notifications-changed");
+}
+
+static void LWLoadSharedNotificationSections(void) {
+    if (LWIsSpringBoardProcess()) return;
+    CFPropertyListRef value = CFPreferencesCopyValue((__bridge CFStringRef)LWNotificationStateKey,
+                                                     (__bridge CFStringRef)LWNotificationStateDomain,
+                                                     kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
+    NSArray<NSString *> *sections = CFBridgingRelease(value);
+    if (![sections isKindOfClass:NSArray.class]) return;
+    if (!LWNotificationRequests) LWNotificationRequests = [NSMutableDictionary dictionary];
+    if (!LWNotificationOrder) LWNotificationOrder = [NSMutableArray array];
+    [LWNotificationRequests removeAllObjects];
+    [LWNotificationOrder removeAllObjects];
+    for (NSString *section in sections) {
+        if (![section isKindOfClass:NSString.class] || !section.length) continue;
+        UIImage *icon = LWApplicationIconForNotification(nil, section);
+        if (!icon) continue;
+        LWNotificationRequests[section] = @{ @"image": icon, @"timestamp": @0 };
+        [LWNotificationOrder addObject:section];
+        if (LWNotificationOrder.count == 3) break;
+    }
+    LWNotificationTrayNeedsRebuild = YES;
 }
 
 static void LWWriteNotificationRuntimeMap(void) {
@@ -533,6 +575,7 @@ static void LWTrackNotificationRequest(id request, BOOL removed) {
         LWSortNotificationSectionsByLatestTimestamp();
     }
     LWNotificationTrayNeedsRebuild = YES;
+    LWPublishNotificationSections();
     dispatch_async(dispatch_get_main_queue(), ^{ LWRenderNotificationTray(); });
 }
 
@@ -820,6 +863,16 @@ static __attribute__((unused)) void LWInstallIntoStatusBar(UIStatusBar *statusBa
 %ctor {
     // Native-item hooks below own installation. Do not create a window-level
     // overlay here: that was the source of the previous lifecycle mismatch.
+    if (!LWIsSpringBoardProcess()) {
+        LWLoadSharedNotificationSections();
+        notify_register_dispatch("com.user.lilywhite.notifications-changed",
+                                 &LWNotificationStateNotifyToken,
+                                 dispatch_get_main_queue(), ^(int __unused token) {
+            LWLoadSharedNotificationSections();
+            LWRenderNotificationTray();
+        });
+        return;
+    }
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         LWWriteNotificationRuntimeMap();
     });
@@ -848,6 +901,7 @@ static BOOL LWIsPersistentStatusBarWindow(UIWindow *window) {
     // The system creates temporary STUI status bars in Cover Sheet and the
     // app switcher.  Only this window owns the status bar that remains after
     // those transitions finish.
+    if (!LWIsSpringBoardProcess()) return window != nil;
     return [NSStringFromClass(window.class) isEqualToString:@"SBStatusBarWindow"];
 }
 
@@ -918,7 +972,7 @@ static void LWUpdateNativeRightAnchor(UIView *item) {
     %orig;
     UIView *item = (UIView *)(id)self;
     LWStatusWindow = item.window;
-    if (!LWNotificationMapCaptured) {
+    if (LWIsSpringBoardProcess() && !LWNotificationMapCaptured) {
         LWNotificationMapCaptured = YES;
         LWWriteNotificationRuntimeMap();
         LWStartRuntimeSocket();
