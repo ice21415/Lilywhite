@@ -6,11 +6,24 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
-#include <stdarg.h>
 
 static NSString * const LWOverlayTag = @"com.user.lilywhite.overlay";
 static BOOL LWHasWiFi;
 static NSInteger LWSignalBars = 0;
+
+#ifndef LILYWHITE_DEBUG
+#define LILYWHITE_DEBUG 0
+#endif
+
+static NSDateFormatter *LWTimeFormatter(void) {
+    static NSDateFormatter *formatter;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        formatter = [NSDateFormatter new];
+        formatter.dateFormat = @"HH:mm";
+    });
+    return formatter;
+}
 
 static __attribute__((unused)) NSInteger LWVisibleSignalLayers(CALayer *layer) {
     NSInteger count = 0;
@@ -71,9 +84,33 @@ static __attribute__((unused)) NSInteger LWVisibleSignalLayers(CALayer *layer) {
     UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(handleTap:)];
     [self addGestureRecognizer:tap];
     [[UIDevice currentDevice] setBatteryMonitoringEnabled:YES];
-    self.timer = [NSTimer scheduledTimerWithTimeInterval:1.0 target:self selector:@selector(updateContent) userInfo:nil repeats:YES];
     [self updateContent];
     return self;
+}
+
+- (void)willMoveToWindow:(UIWindow *)newWindow {
+    [super willMoveToWindow:newWindow];
+
+    if (!newWindow) {
+        [self.timer invalidate];
+        self.timer = nil;
+        return;
+    }
+
+    if (!self.timer) {
+        __weak typeof(self) weakSelf = self;
+        self.timer = [NSTimer scheduledTimerWithTimeInterval:1.0
+                                                    repeats:YES
+                                                      block:^(__unused NSTimer *timer) {
+            [weakSelf updateContent];
+        }];
+    }
+
+    [self updateContent];
+}
+
+- (void)dealloc {
+    [self.timer invalidate];
 }
 
 - (UILabel *)labelWithFont:(UIFont *)font {
@@ -105,7 +142,9 @@ static __attribute__((unused)) NSInteger LWVisibleSignalLayers(CALayer *layer) {
     CGFloat visibleFraction = MIN(1.0, MAX(0.04, self.batteryFraction));
     self.batteryOutlineLayer.strokeStart = 1.0 - visibleFraction;
     self.batteryOutlineLayer.strokeEnd = 1.0;
-    BOOL charging = UIDevice.currentDevice.batteryState == UIDeviceBatteryStateCharging;
+    UIDeviceBatteryState batteryState = UIDevice.currentDevice.batteryState;
+    BOOL charging = batteryState == UIDeviceBatteryStateCharging ||
+                    batteryState == UIDeviceBatteryStateFull;
     UIColor *color = charging ? UIColor.systemGreenColor : (NSProcessInfo.processInfo.lowPowerModeEnabled ? UIColor.systemYellowColor : UIColor.whiteColor);
     self.batteryOutlineLayer.strokeColor = color.CGColor;
 }
@@ -145,9 +184,7 @@ static __attribute__((unused)) NSInteger LWVisibleSignalLayers(CALayer *layer) {
         self.timeLabel.text = [NSString stringWithFormat:@"%ld%%", (long)percentage];
     } else {
         self.batteryPercentageVisibleUntil = nil;
-        NSDateFormatter *formatter = [NSDateFormatter new];
-        formatter.dateFormat = @"HH:mm";
-        self.timeLabel.text = [formatter stringFromDate:NSDate.date];
+        self.timeLabel.text = [LWTimeFormatter() stringFromDate:NSDate.date];
     }
     [self setNeedsLayout];
     [self setNeedsDisplay];
@@ -163,32 +200,24 @@ static CGRect LWNativeTimeRect;
 static UIView *LWNativeTimeView;
 static NSString *LWRuntimeMap;
 static NSString *LWTouchRuntimeMap;
-static NSMutableArray<NSString *> *LWStatusLifecycleEvents;
 static char LWNativeCapsuleKey;
 static char LWNativeActionTargetKey;
 static BOOL LWNotificationMapCaptured;
-static char LWNotificationTrayKey;
+static UIView *LWNotificationTray;
 static __weak UIView *LWNativeRightAnchor;
+static __weak UIView *LWNativeRightHost;
+static __weak UIWindow *LWNativeRightWindow;
+static __weak UIView *LWPreviousRightAnchor;
+static __weak UIView *LWPreviousRightHost;
+static __weak UIWindow *LWPreviousRightWindow;
+static BOOL LWReconcilingNotifications;
 static NSMutableDictionary<NSString *, NSDictionary *> *LWNotificationRequests;
 static NSMutableArray<NSString *> *LWNotificationOrder;
 static NSMutableDictionary<NSString *, UIImage *> *LWNotificationIconCache;
 static char LWNativeRightHiddenKey;
-static BOOL LWNativeRightReclaimScheduled;
-static BOOL LWPostSheetRestoreScheduled;
 
 static void LWStartRuntimeSocket(void);
 static void LWStartTouchRuntimeSocket(void);
-static void LWStartStatusLifecycleSocket(void);
-
-static void LWRecordStatusLifecycle(NSString *format, ...) {
-    va_list args;
-    va_start(args, format);
-    NSString *message = [[NSString alloc] initWithFormat:format arguments:args];
-    va_end(args);
-    if (!LWStatusLifecycleEvents) LWStatusLifecycleEvents = [NSMutableArray array];
-    [LWStatusLifecycleEvents addObject:[NSString stringWithFormat:@"%.3f %@", NSProcessInfo.processInfo.systemUptime, message]];
-    if (LWStatusLifecycleEvents.count > 120) [LWStatusLifecycleEvents removeObjectAtIndex:0];
-}
 
 static void LWAttachNativeStatusBarAction(UIView *item, LWStatusCapsule *capsule) {
     for (UIView *ancestor = item; ancestor; ancestor = ancestor.superview) {
@@ -322,32 +351,6 @@ static void LWStartTouchRuntimeSocket(void) {
     });
 }
 
-static void LWStartStatusLifecycleSocket(void) {
-    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
-        int server = socket(AF_INET, SOCK_STREAM, 0);
-        if (server < 0) return;
-        struct sockaddr_in addr = {0};
-        addr.sin_len = sizeof(addr);
-        addr.sin_family = AF_INET;
-        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-        addr.sin_port = htons(27045);
-        int yes = 1;
-        setsockopt(server, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
-        if (bind(server, (struct sockaddr *)&addr, sizeof(addr)) != 0 || listen(server, 1) != 0) {
-            close(server);
-            return;
-        }
-        int client = accept(server, NULL, NULL);
-        if (client >= 0) {
-            NSString *report = [LWStatusLifecycleEvents componentsJoinedByString:@"\n"] ?: @"(no lifecycle events)";
-            NSData *data = [report dataUsingEncoding:NSUTF8StringEncoding];
-            send(client, data.bytes, data.length, 0);
-            close(client);
-        }
-        close(server);
-    });
-}
-
 static __attribute__((unused)) BOOL LWLooksLikeClockText(NSString *text) {
     if (![text isKindOfClass:NSString.class] || text.length < 4 || text.length > 5) return NO;
     NSUInteger colon = [text rangeOfString:@":"].location;
@@ -432,29 +435,24 @@ static void LWSetNativeRightStatusItemsHidden(UIView *view, UIWindow *window, BO
 
 static void LWRenderNotificationTray(void) {
     NSArray<NSString *> *sections = [LWNotificationOrder subarrayWithRange:NSMakeRange(0, MIN(3, LWNotificationOrder.count))];
-    UIWindow *window = LWStatusWindow;
     UIView *anchor = LWNativeRightAnchor;
+    UIWindow *window = anchor.window;
     UIView *host = anchor.superview;
-    LWRecordStatusLifecycle(@"render sections=%lu anchor=%@ host=%@", (unsigned long)sections.count,
-                            NSStringFromClass(anchor.class), NSStringFromClass(host.class));
     if (!window || !host) return;
-    // A pull-down creates several distinct STUIStatusBarForegroundView
-    // instances with the same class name. The tray must belong to its native
-    // host, rather than being one global view moved between those instances.
-    UIView *tray = objc_getAssociatedObject(host, &LWNotificationTrayKey);
-    if (!tray) {
-        tray = [[UIView alloc] initWithFrame:CGRectZero];
-        tray.userInteractionEnabled = NO;
-        objc_setAssociatedObject(host, &LWNotificationTrayKey, tray, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        [host addSubview:tray];
-    }
     if (!sections.count) {
-        tray.hidden = YES;
+        LWNotificationTray.hidden = YES;
         LWSetNativeRightStatusItemsHidden(host, window, NO);
         return;
     }
-    if (tray.superview != host) [host addSubview:tray];
-    for (UIView *subview in tray.subviews) [subview removeFromSuperview];
+    if (!LWNotificationTray) {
+        LWNotificationTray = [[UIView alloc] initWithFrame:CGRectZero];
+        LWNotificationTray.userInteractionEnabled = NO;
+    }
+    if (LWNotificationTray.superview != host) {
+        [LWNotificationTray removeFromSuperview];
+        [host addSubview:LWNotificationTray];
+    }
+    for (UIView *subview in LWNotificationTray.subviews) [subview removeFromSuperview];
     CGFloat iconSize = 16.0;
     CGFloat spacing = 4.0;
     CGFloat width = sections.count * iconSize + (sections.count - 1) * spacing;
@@ -463,10 +461,10 @@ static void LWRenderNotificationTray(void) {
     // native right cluster.  Its right edge is therefore not the status
     // area's outer edge; align the notification group to that outer edge.
     CGFloat rightInset = 8.0;
-    tray.frame = CGRectMake(host.bounds.size.width - width - rightInset,
-                            CGRectGetMidY(anchorFrame) - iconSize / 2.0,
-                            width, iconSize);
-    tray.hidden = NO;
+    LWNotificationTray.frame = CGRectMake(host.bounds.size.width - width - rightInset,
+                                          CGRectGetMidY(anchorFrame) - iconSize / 2.0,
+                                          width, iconSize);
+    LWNotificationTray.hidden = NO;
     for (NSUInteger i = 0; i < sections.count; i++) {
         NSDictionary *entry = LWNotificationRequests[sections[i]];
         UIImage *image = entry[@"image"];
@@ -475,10 +473,10 @@ static void LWRenderNotificationTray(void) {
         imageView.contentMode = UIViewContentModeScaleAspectFill;
         imageView.layer.cornerRadius = 4.0;
         imageView.clipsToBounds = YES;
-        [tray addSubview:imageView];
+        [LWNotificationTray addSubview:imageView];
     }
     LWSetNativeRightStatusItemsHidden(host, window, YES);
-    [host bringSubviewToFront:tray];
+    [host bringSubviewToFront:LWNotificationTray];
 }
 
 static NSTimeInterval LWNotificationTimestamp(id request) {
@@ -528,7 +526,9 @@ static void LWTrackNotificationRequest(id request, BOOL removed) {
         if (![LWNotificationOrder containsObject:section]) [LWNotificationOrder addObject:section];
         LWSortNotificationSectionsByLatestTimestamp();
     }
-    dispatch_async(dispatch_get_main_queue(), ^{ LWRenderNotificationTray(); });
+    if (!LWReconcilingNotifications) {
+        dispatch_async(dispatch_get_main_queue(), ^{ LWRenderNotificationTray(); });
+    }
 }
 
 static void LWDescribeNotificationContainer(id object, NSMutableArray<NSString *> *debug) {
@@ -561,58 +561,98 @@ static void LWDescribeNotificationContainer(id object, NSMutableArray<NSString *
 
 static void LWLoadExistingNotificationRequests(id masterList) {
     if (!masterList) return;
-    // iOS 17 keeps the rendered requests in sections on some builds, while
-    // other builds expose them directly.  Probe both forms rather than
-    // assuming _visibleNotificationRequests is populated.
-    NSMutableArray<NSString *> *debug = [NSMutableArray arrayWithObject:[NSString stringWithFormat:@"master=%@", NSStringFromClass([masterList class])]];
+
     NSMutableArray *containers = [NSMutableArray array];
-    SEL selector = NSSelectorFromString(@"_visibleNotificationRequests");
-    if ([masterList respondsToSelector:selector]) {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
-        id requests = [masterList performSelector:selector];
-#pragma clang diagnostic pop
-        if (requests) [containers addObject:@{ @"name": @"visible", @"value": requests }];
-    }
+
+    // Prefer the section-backed path verified on iOS 17. Only fall back to
+    // _visibleNotificationRequests when no section container is exposed.
     for (NSString *key in @[@"notificationSections", @"sections", @"_notificationSections"]) {
         id value = LWKVC(masterList, key);
-        if (value) [containers addObject:@{ @"name": key, @"value": value }];
+        if (value) [containers addObject:value];
     }
-    for (NSDictionary *containerInfo in containers) {
-        id container = containerInfo[@"value"];
-        NSString *name = containerInfo[@"name"];
-        if (![container conformsToProtocol:@protocol(NSFastEnumeration)]) {
-            [debug addObject:[NSString stringWithFormat:@"%@=%@ (not enumerable)", name, NSStringFromClass([container class])]];
-            continue;
+
+    if (!containers.count) {
+        SEL selector = NSSelectorFromString(@"_visibleNotificationRequests");
+        if ([masterList respondsToSelector:selector]) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+            id requests = [masterList performSelector:selector];
+#pragma clang diagnostic pop
+            if (requests) [containers addObject:requests];
         }
-        NSArray *objects = [container isKindOfClass:NSArray.class] ? container : [container allObjects];
-        [debug addObject:[NSString stringWithFormat:@"%@ count=%lu", name, (unsigned long)objects.count]];
+    }
+
+    NSMutableDictionary<NSString *, NSDictionary *> *previousRequests = LWNotificationRequests;
+    NSMutableArray<NSString *> *previousOrder = LWNotificationOrder;
+
+    LWNotificationRequests = [NSMutableDictionary dictionary];
+    LWNotificationOrder = [NSMutableArray array];
+    LWReconcilingNotifications = YES;
+
+    BOOL authoritativeSnapshot = NO;
+
+    for (id container in containers) {
+        if (![container conformsToProtocol:@protocol(NSFastEnumeration)]) continue;
+
+        NSArray *objects = nil;
+        if ([container isKindOfClass:NSArray.class]) {
+            objects = container;
+        } else if ([container respondsToSelector:@selector(allObjects)]) {
+            objects = [container allObjects];
+        } else {
+            NSMutableArray *collected = [NSMutableArray array];
+            for (id object in container) {
+                if (object) [collected addObject:object];
+            }
+            objects = collected;
+        }
+
+        if (objects.count == 0) authoritativeSnapshot = YES;
+
         for (id object in objects) {
             id bulletin = LWKVC(object, @"bulletin");
             if (bulletin) {
-                id icon = LWKVC(bulletin, @"sectionIcon") ?: LWKVC(bulletin, @"icon");
-                [debug addObject:[NSString stringWithFormat:@"request=%@ section=%@ bulletin=%@ icon=%@", NSStringFromClass([object class]), LWKVC(object, @"sectionIdentifier"), NSStringFromClass([bulletin class]), NSStringFromClass([icon class])]];
+                authoritativeSnapshot = YES;
                 LWTrackNotificationRequest(object, NO);
                 continue;
             }
-            [debug addObject:[NSString stringWithFormat:@"section=%@", NSStringFromClass([object class])]];
-            LWDescribeNotificationContainer(object, debug);
-            for (NSString *key in @[@"allNotificationRequests", @"filteredNotificationRequests", @"notificationRequests", @"requests", @"visibleNotificationRequests", @"_visibleNotificationRequests"]) {
+
+            for (NSString *key in @[@"allNotificationRequests",
+                                    @"filteredNotificationRequests",
+                                    @"notificationRequests",
+                                    @"requests",
+                                    @"visibleNotificationRequests",
+                                    @"_visibleNotificationRequests"]) {
                 id sectionRequests = LWKVC(object, key);
                 if (![sectionRequests conformsToProtocol:@protocol(NSFastEnumeration)]) continue;
-                NSArray *requestList = [sectionRequests isKindOfClass:NSArray.class] ? sectionRequests : [sectionRequests allObjects];
-                [debug addObject:[NSString stringWithFormat:@"  %@ count=%lu", key, (unsigned long)requestList.count]];
-                for (id request in requestList) {
-                    id requestBulletin = LWKVC(request, @"bulletin");
-                    id icon = LWKVC(requestBulletin, @"sectionIcon") ?: LWKVC(requestBulletin, @"icon");
-                    [debug addObject:[NSString stringWithFormat:@"  request=%@ section=%@ bulletin=%@ icon=%@", NSStringFromClass([request class]), LWKVC(request, @"sectionIdentifier"), NSStringFromClass([requestBulletin class]), NSStringFromClass([icon class])]];
-                    LWTrackNotificationRequest(request, NO);
+
+                authoritativeSnapshot = YES;
+
+                if ([sectionRequests isKindOfClass:NSArray.class]) {
+                    for (id request in sectionRequests) LWTrackNotificationRequest(request, NO);
+                } else if ([sectionRequests respondsToSelector:@selector(allObjects)]) {
+                    for (id request in [sectionRequests allObjects]) LWTrackNotificationRequest(request, NO);
+                } else {
+                    for (id request in sectionRequests) LWTrackNotificationRequest(request, NO);
                 }
+
+                if ([key isEqualToString:@"allNotificationRequests"]) break;
             }
         }
     }
-    LWRuntimeMap = [debug componentsJoinedByString:@"\n"];
-    LWStartRuntimeSocket();
+
+    LWReconcilingNotifications = NO;
+
+    if (!authoritativeSnapshot) {
+        LWNotificationRequests = previousRequests ?: [NSMutableDictionary dictionary];
+        LWNotificationOrder = previousOrder ?: [NSMutableArray array];
+        return;
+    }
+
+    LWSortNotificationSectionsByLatestTimestamp();
+    dispatch_async(dispatch_get_main_queue(), ^{
+        LWRenderNotificationTray();
+    });
 }
 
 static void LWRefreshNativeSignalBars(UIView *root) {
@@ -813,17 +853,14 @@ static __attribute__((unused)) void LWInstallIntoStatusBar(UIStatusBar *statusBa
 }
 
 %ctor {
-    // Native-item hooks below own installation. Do not create a window-level
-    // overlay here: that was the source of the previous lifecycle mismatch.
+#if LILYWHITE_DEBUG
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         LWWriteNotificationRuntimeMap();
     });
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(6.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         LWWriteStatusBarTouchMap();
     });
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        LWStartStatusLifecycleSocket();
-    });
+#endif
 }
 
 %hook UIStatusBar
@@ -839,68 +876,79 @@ static __attribute__((unused)) void LWInstallIntoStatusBar(UIStatusBar *statusBa
 // Use the native cellular item only as a layout anchor.  The notification
 // tray becomes its sibling in the same STUI foreground hierarchy, exactly as
 // the left capsule is a sibling of the native clock item.
-static BOOL LWIsTransientRightStatusWindow(UIWindow *window) {
+static BOOL LWIsTemporaryRightStatusWindow(UIWindow *window) {
+    if (!window) return NO;
     NSString *name = NSStringFromClass(window.class);
-    // Notification Center and Control Center construct throwaway STUI trees.
-    // Never move the one persistent tray into either tree: it is destroyed
-    // as soon as the sheet closes. SBMainSwitcherWindow is intentionally not
-    // excluded because it is used by the normal app-transition path.
     return [name containsString:@"SBCoverSheetWindow"] ||
            [name containsString:@"SBControlCenterWindow"];
-}
-
-static void LWSchedulePostSheetRightTrayRestore(void) {
-    if (LWPostSheetRestoreScheduled || !LWNotificationOrder.count) return;
-    LWPostSheetRestoreScheduled = YES;
-    // Cover Sheet's last compositor transaction occurs after the native
-    // cellular item has returned to SBStatusBarWindow. Re-asserting once at
-    // the end and once after its completion avoids being covered by that
-    // transaction without touching an app process or its status bar.
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.45 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        if (LWNativeRightAnchor.window && !LWIsTransientRightStatusWindow(LWNativeRightAnchor.window)) {
-            LWRenderNotificationTray();
-        }
-    });
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.00 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        LWPostSheetRestoreScheduled = NO;
-        if (LWNativeRightAnchor.window && !LWIsTransientRightStatusWindow(LWNativeRightAnchor.window)) {
-            LWRenderNotificationTray();
-        }
-    });
 }
 
 static void LWUpdateNativeRightAnchor(UIView *item) {
     UIWindow *window = item.window;
     if (!window || item.hidden) return;
-    if (LWIsTransientRightStatusWindow(window)) {
-        LWRecordStatusLifecycle(@"ignored transient right-status window=%@", NSStringFromClass(window.class));
-        LWSchedulePostSheetRightTrayRestore();
-        return;
-    }
+
     CGRect screenFrame = [item convertRect:item.bounds toView:window];
     if (CGRectGetMidX(screenFrame) < window.bounds.size.width * 0.72) return;
-    LWStatusWindow = window;
+
+    UIView *newHost = item.superview;
+    if (!newHost) return;
+
+    if (LWNativeRightHost && LWNativeRightHost != newHost && LWNativeRightWindow) {
+        if (LWIsTemporaryRightStatusWindow(window) &&
+            !LWIsTemporaryRightStatusWindow(LWNativeRightWindow)) {
+            LWPreviousRightAnchor = LWNativeRightAnchor;
+            LWPreviousRightHost = LWNativeRightHost;
+            LWPreviousRightWindow = LWNativeRightWindow;
+        }
+
+        LWSetNativeRightStatusItemsHidden(LWNativeRightHost,
+                                          LWNativeRightWindow,
+                                          NO);
+    }
+
     LWNativeRightAnchor = item;
-    LWRecordStatusLifecycle(@"signal-anchor window=%@ host=%@ hidden=%d", NSStringFromClass(window.class), NSStringFromClass(item.superview.class), item.hidden);
+    LWNativeRightHost = newHost;
+    LWNativeRightWindow = window;
+    LWStatusWindow = window;
     LWRenderNotificationTray();
 }
 
-// The status-bar transition ends after layoutSubviews has run: iOS then
-// unhides an individual native indicator. Reclaim on the next animation tick
-// so the system's final visibility write cannot cover the tray again.
-static void LWScheduleNativeRightReclaim(UIView *item) {
-    if (!LWNotificationOrder.count || LWNativeRightReclaimScheduled) return;
-    UIWindow *window = item.window ?: LWStatusWindow;
-    if (!window || LWIsTransientRightStatusWindow(window)) return;
-    LWNativeRightReclaimScheduled = YES;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.08 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        LWNativeRightReclaimScheduled = NO;
-        if (item && !item.hidden) LWUpdateNativeRightAnchor(item);
-        LWRenderNotificationTray();
-    });
+%hook STUIStatusBarCellularSignalView
+- (void)willMoveToWindow:(UIWindow *)newWindow {
+    UIView *item = (UIView *)(id)self;
+    UIWindow *oldWindow = item.window;
+    BOOL leavingTemporaryHost =
+        (newWindow == nil &&
+         item == LWNativeRightAnchor &&
+         LWIsTemporaryRightStatusWindow(oldWindow));
+
+    if (leavingTemporaryHost && LWNativeRightHost && oldWindow) {
+        LWSetNativeRightStatusItemsHidden(LWNativeRightHost, oldWindow, NO);
+    }
+
+    %orig;
+
+    if (leavingTemporaryHost) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            UIView *previousAnchor = LWPreviousRightAnchor;
+            UIWindow *previousWindow = previousAnchor.window ?: LWPreviousRightWindow;
+            UIView *previousHost = previousAnchor.superview ?: LWPreviousRightHost;
+
+            if (previousAnchor && previousWindow && previousHost) {
+                LWNativeRightAnchor = previousAnchor;
+                LWNativeRightHost = previousHost;
+                LWNativeRightWindow = previousWindow;
+                LWStatusWindow = previousWindow;
+                LWRenderNotificationTray();
+            }
+
+            LWPreviousRightAnchor = nil;
+            LWPreviousRightHost = nil;
+            LWPreviousRightWindow = nil;
+        });
+    }
 }
 
-%hook STUIStatusBarCellularSignalView
 - (void)didMoveToWindow {
     %orig;
     LWUpdateNativeRightAnchor((UIView *)(id)self);
@@ -909,25 +957,6 @@ static void LWScheduleNativeRightReclaim(UIView *item) {
 - (void)layoutSubviews {
     %orig;
     LWUpdateNativeRightAnchor((UIView *)(id)self);
-}
-
-- (void)setHidden:(BOOL)hidden {
-    %orig;
-    if (!hidden) LWScheduleNativeRightReclaim((UIView *)(id)self);
-}
-%end
-
-%hook STUIStatusBarBatteryView
-- (void)setHidden:(BOOL)hidden {
-    %orig;
-    if (!hidden) LWScheduleNativeRightReclaim((UIView *)(id)self);
-}
-%end
-
-%hook STUIStatusBarCellularNetworkTypeView
-- (void)setHidden:(BOOL)hidden {
-    %orig;
-    if (!hidden) LWScheduleNativeRightReclaim((UIView *)(id)self);
 }
 %end
 
@@ -938,7 +967,7 @@ static void LWScheduleNativeRightReclaim(UIView *item) {
 - (void)didMoveToWindow {
     %orig;
     UIView *item = (UIView *)(id)self;
-    LWStatusWindow = item.window;
+#if LILYWHITE_DEBUG
     if (!LWNotificationMapCaptured) {
         LWNotificationMapCaptured = YES;
         LWWriteNotificationRuntimeMap();
@@ -952,10 +981,12 @@ static void LWScheduleNativeRightReclaim(UIView *item) {
         for (NSString *name in candidates) if (NSClassFromString(name)) [available addObject:name];
         NSLog(@"[Lilywhite] native status hook active; notification classes: %@", [available componentsJoinedByString:@", "]);
     }
+#endif
     // The text is commonly still nil at this point. layoutSubviews below
     // performs the exact clock check after the system has configured it.
     if (!item.window) return;
     if (!LWIsActualClockItem(item)) return;
+    LWStatusWindow = item.window;
     LWStatusCapsule *capsule = objc_getAssociatedObject(item, &LWNativeCapsuleKey);
     if (!capsule) {
         capsule = [[LWStatusCapsule alloc] initWithFrame:CGRectZero];
@@ -978,8 +1009,8 @@ static void LWScheduleNativeRightReclaim(UIView *item) {
 - (void)layoutSubviews {
     %orig;
     UIView *item = (UIView *)(id)self;
-    LWStatusWindow = item.window;
     if (!LWIsActualClockItem(item)) return;
+    LWStatusWindow = item.window;
     LWStatusCapsule *capsule = objc_getAssociatedObject(item, &LWNativeCapsuleKey);
     if (!capsule) return;
     if ([item isKindOfClass:UILabel.class]) ((UILabel *)item).textColor = UIColor.clearColor;
@@ -999,7 +1030,6 @@ static void LWScheduleNativeRightReclaim(UIView *item) {
 %hook NCNotificationMasterList
 - (id)init {
     id masterList = %orig;
-    LWRecordStatusLifecycle(@"master-init %@", NSStringFromClass([masterList class]));
     // The master list fills asynchronously after SpringBoard starts, so take
     // two snapshots to cover the initial and fully-loaded notification state.
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
@@ -1018,30 +1048,24 @@ static void LWScheduleNativeRightReclaim(UIView *item) {
 
 - (void)_notificationListDidChangeContent {
     %orig;
-    LWRecordStatusLifecycle(@"notification-content-changed");
     LWLoadExistingNotificationRequests(self);
 }
 
 - (void)insertNotificationRequest:(id)request {
     %orig;
-    LWRecordStatusLifecycle(@"notification-insert section=%@", LWKVC(request, @"sectionIdentifier"));
     LWTrackNotificationRequest(request, NO);
 }
 
 - (void)modifyNotificationRequest:(id)request {
     %orig;
-    LWRecordStatusLifecycle(@"notification-modify section=%@", LWKVC(request, @"sectionIdentifier"));
     LWTrackNotificationRequest(request, NO);
 }
 
 - (void)removeNotificationRequest:(id)request {
     %orig;
-    LWRecordStatusLifecycle(@"notification-remove section=%@", LWKVC(request, @"sectionIdentifier"));
-    // iOS 17 emits this while Notification Center is rebuilding its rendered
-    // list during a pull-down transition. It does not reliably mean that the
-    // user dismissed the underlying notification. Removing the section here
-    // erased the complete right tray (sections=0) after every transition.
-    // Keep the last known app until a subsequent insert/modify or a fresh
-    // SpringBoard notification snapshot supplies authoritative state.
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        LWLoadExistingNotificationRequests(self);
+    });
 }
 %end

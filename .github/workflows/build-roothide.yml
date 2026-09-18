@@ -17,48 +17,39 @@ permissions:
 jobs:
   build:
     runs-on: macos-14
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install signing tool and RootHide Theos
+      - name: Install RootHide build tools
         run: |
-          {
-            brew install ldid
-            git clone --recursive https://github.com/roothide/theos.git "$HOME/roothide-theos"
-            export THEOS="$HOME/roothide-theos"
-            "$THEOS/bin/install-sdk" latest
-          } 2>&1 | tee setup.log
+          set -o pipefail
+          brew install ldid dpkg
+          git clone --recursive https://github.com/roothide/theos.git "$HOME/roothide-theos"
+          export THEOS="$HOME/roothide-theos"
+          "$THEOS/bin/install-sdk" latest
 
-      - name: Build arm64e package with Apple toolchain
+      - name: Build arm64e package
         run: |
           set -o pipefail
           export THEOS="$HOME/roothide-theos"
           mkdir -p build-packages
           make clean package THEOS_PACKAGE_SCHEME=roothide FINALPACKAGE=1 2>&1 | tee build.log
 
-      - name: Publish build diagnostic
-        if: failure()
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f *.log || true
-          git diff --cached --quiet || git commit -m "Publish macOS build diagnostic"
-          git push origin HEAD:main || true
-
       - name: Annotate build failure
         if: failure()
         run: |
-          summary=$(tr '\n' ' ' < build.log)
+          summary=$(tr '\n' ' ' < build.log 2>/dev/null || true)
           echo "::error title=Lilywhite macOS build output::$summary"
 
-      - name: Upload build diagnostic artifact
+      - name: Upload build log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: lilywhite-build-diagnostic
+          name: lilywhite-build-log
           path: build.log
-          if-no-files-found: error
-          retention-days: 1
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Upload package artifact
         if: success()
@@ -67,13 +58,48 @@ jobs:
           name: lilywhite-roothide-package
           path: build-packages/*.deb
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 7
 
-      - name: Publish package binary
+      - name: Publish package and refresh APT metadata
+        if: success()
         run: |
+          set -euo pipefail
+
           cp build-packages/*.deb .
+          rm -rf build-packages
+
+          dpkg-scanpackages --multiversion . /dev/null > Packages
+          bzip2 -kf Packages
+
+          packages_size=$(wc -c < Packages | tr -d ' ')
+          packages_bz2_size=$(wc -c < Packages.bz2 | tr -d ' ')
+          md5_packages=$(md5 -q Packages)
+          md5_packages_bz2=$(md5 -q Packages.bz2)
+          sha256_packages=$(shasum -a 256 Packages | awk '{print $1}')
+          sha256_packages_bz2=$(shasum -a 256 Packages.bz2 | awk '{print $1}')
+
+          cat > Release <<EOF
+          Origin: Lilywhite
+          Label: Lilywhite
+          Suite: stable
+          Codename: stable
+          Version: 1.0
+          Architectures: iphoneos-arm64 iphoneos-arm64e
+          Components: main
+          Description: Lilywhite RootHide tweak repository
+          MD5Sum:
+           $md5_packages $packages_size Packages
+           $md5_packages_bz2 $packages_bz2_size Packages.bz2
+          SHA256:
+           $sha256_packages $packages_size Packages
+           $sha256_packages_bz2 $packages_bz2_size Packages.bz2
+          EOF
+
+          # Remove the indentation introduced by the YAML block above.
+          sed -i '' 's/^          //' Release
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add ./*.deb
-          git diff --cached --quiet || git commit -m "Build Lilywhite 0.1.3 RootHide package"
+          git add ./*.deb Packages Packages.bz2 Release
+          git diff --cached --quiet || git commit -m "Build Lilywhite package and refresh repository metadata"
           git push origin HEAD:main
