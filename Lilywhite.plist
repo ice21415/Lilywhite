@@ -1,7 +1,5 @@
 {
-    // SpringBoard owns notification collection. com.apple.UIKit is the
-    // RootHide/ElleKit UIKit-wide filter used by installed UI tweaks (such as
-    // Snowboard), allowing the lightweight renderer to attach to each app's
-    // own native status bar without globally targeting non-UIKit daemons.
-    Filter = { Bundles = ("com.apple.springboard", "com.apple.UIKit"); };
+    // Use the verified SpringBoard target while inspecting its notification
+    // runtime. App-process injection is deliberately not enabled here.
+    Filter = { Bundles = ("com.apple.springboard"); };
 }
