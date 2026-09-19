@@ -7,8 +7,8 @@ Architectures: iphoneos-arm64 iphoneos-arm64e
 Components: main
 Description: Lilywhite RootHide tweak repository
 MD5Sum:
- aebc7973908f0f35725d2add8340ec6f 9055 Packages
- 119db5f9f17604622e1191261590904c 2242 Packages.bz2
+ fa6bad90f1688e363c54f2ec579de41f 9531 Packages
+ 0586e23f7c03a61c00cc83cdcfad581a 2305 Packages.bz2
 SHA256:
- 0d232224d3dabbe6741189f3a56fd679c2ed6229fe07ed81ffe9c089593b5a41 9055 Packages
- f8271f957f4e636d1a0fb066aacf3716748069b274e6741b11f7b899efea6a82 2242 Packages.bz2
+ 0eeda5d78d17f4c474b8338ed370fe8f098a03b6e34fc07f1a2dc60983d5a4bb 9531 Packages
+ 55edbd4f4096d3dc0ee1d99e600ef021dc0c836b89315ab9c34c6ae50fdcc3c5 2305 Packages.bz2
