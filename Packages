@@ -31,6 +31,22 @@ Author: USER
 Name: Lilywhite
 
 Package: com.user.lilywhite
+Version: 0.1.11
+Architecture: iphoneos-arm64e
+Maintainer: USER
+Installed-Size: 108
+Depends: mobilesubstrate
+Filename: ./com.user.lilywhite_0.1.11_iphoneos-arm64e.deb
+Size: 16692
+MD5sum: 202a93efc7b15d4e813ca795fc70c139
+SHA1: b13389b4873a6a40f192d77a51e6ccb8d0b83114
+SHA256: 644d9d061e1d9183c39a1ba1822b42c711213e8fbd794824b152653a1830954e
+Section: Tweaks
+Description: A clean integrated status bar capsule for iOS 17.
+Author: USER
+Name: Lilywhite
+
+Package: com.user.lilywhite
 Version: 0.1.2-1+debug
 Architecture: iphoneos-arm64e
 Maintainer: USER
